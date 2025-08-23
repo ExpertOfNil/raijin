@@ -129,7 +129,7 @@ void Mesh_realloc_instance_buffer(
 ) {
     while (mesh->instance_capacity < new_capacity) {
         if (mesh->instance_capacity == 0) {
-            mesh->instance_capacity = DEFAULT_INSTANCE_CAPACITY * sizeof(Instance);
+            mesh->instance_capacity = DEFAULT_INSTANCE_CAPACITY;
         } else {
             mesh->instance_capacity *= 2;
         }

@@ -115,7 +115,7 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
     mesh->instance_buffer = create_buffer(
         renderer->device,
         mesh->instance_capacity * sizeof(Instance),
-        WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+        WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
         "Index Buffer"
     );
 
@@ -139,7 +139,7 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
     mesh->edge_instance_buffer = create_buffer(
         renderer->device,
         mesh->edge_instance_capacity * sizeof(Instance),
-        WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+        WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
         "Index Buffer"
     );
 
@@ -1048,6 +1048,16 @@ void Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
     );
     LOG_INFO("Surface configured successfully");
     return;
+}
+
+void Renderer_update_uniforms(
+    Renderer* renderer, mat4 proj_matrix, mat4 view_matrix
+) {
+    Uniform uniform = {0};
+    glm_mat4_mul(proj_matrix, view_matrix, uniform.view_proj);
+    wgpuQueueWriteBuffer(
+        renderer->queue, renderer->uniform_buffer, 0, &uniform, sizeof(Uniform)
+    );
 }
 
 #endif /* RENDERER_H */
