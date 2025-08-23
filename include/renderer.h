@@ -12,65 +12,11 @@ typedef struct Uniform {
     mat4 view_proj;
 } Uniform;
 
-typedef struct Instance {
-    mat4 model_matrix;
-    vec4 color;
-} Instance;
-
-static WGPUVertexBufferLayout Instance_desc(void) {
-    static WGPUVertexAttribute attribs[5] = {
-        {
-            .format = WGPUVertexFormat_Float32x4,
-            .offset = 0 * 4 * sizeof(f32),
-            .shaderLocation = 3,
-        },
-        {
-            .format = WGPUVertexFormat_Float32x4,
-            .offset = 1 * 4 * sizeof(f32),
-            .shaderLocation = 4,
-        },
-        {
-            .format = WGPUVertexFormat_Float32x4,
-            .offset = 2 * 4 * sizeof(f32),
-            .shaderLocation = 5,
-        },
-        {
-            .format = WGPUVertexFormat_Float32x4,
-            .offset = 3 * 4 * sizeof(f32),
-            .shaderLocation = 6,
-        },
-        {
-            .format = WGPUVertexFormat_Float32x4,
-            .offset = 4 * 4 * sizeof(f32),
-            .shaderLocation = 7,
-        },
-    };
-
-    return (WGPUVertexBufferLayout){
-        .arrayStride = sizeof(Instance),
-        .stepMode = WGPUVertexStepMode_Instance,
-        .attributes = attribs,
-    };
-}
-
-void Instance_set_position(Instance* instance, vec3 position) {
-    glm_vec3_copy(position, instance->model_matrix[3]);
-}
-
-void Instance_from_position_rotation(
-    Instance* instance, vec3 position, mat3 rotation, f32 scale, vec4 color
-) {
-    glm_mat4_identity(instance->model_matrix);
-    glm_mat4_ins3(rotation, instance->model_matrix);
-    glm_mat4_scale(instance->model_matrix, scale);
-    glm_translate(instance->model_matrix, position);
-    glm_vec4_copy(color, instance->color);
-}
-
 typedef struct DrawCommand {
     MeshType mesh_type;
     Instance instance;
 } DrawCommand;
+DEFINE_DYNAMIC_ARRAY(DrawCommand, DrawCommandArray)
 
 typedef enum {
     RENDER_MODE_HEADLESS,
@@ -123,7 +69,6 @@ static void device_request_callback(
     }
 }
 
-DEFINE_DYNAMIC_ARRAY(Mesh, MeshArray)
 typedef struct Renderer {
     bool enable_edges;
     WGPUAdapter adapter;
@@ -145,26 +90,88 @@ typedef struct Renderer {
     WGPUBindGroup uniform_bind_group;
     WGPUTexture depth_texture;
     WGPUTextureView depth_texture_view;
-    DrawCommand* draw_commands;
+    DrawCommandArray draw_commands;
     Mesh meshes[MESH_TYPE_COUNT];
 } Renderer;
 
+void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
+    // Vertex buffer
+    mesh->vertex_buffer = create_buffer(
+        renderer->device,
+        mesh->vertices.count * sizeof(Vertex),
+        WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
+        "Vertex Buffer"
+    );
+
+    wgpuQueueWriteBuffer(
+        renderer->queue,
+        mesh->vertex_buffer,
+        0,
+        mesh->vertices.items,
+        mesh->vertices.count * sizeof(Vertex)
+    );
+
+    // Instance buffer
+    mesh->instance_buffer = create_buffer(
+        renderer->device,
+        mesh->instance_capacity * sizeof(Instance),
+        WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+        "Index Buffer"
+    );
+
+    // Index buffer
+    mesh->index_buffer = create_buffer(
+        renderer->device,
+        mesh->indices.count * sizeof(u16),
+        WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+        "Index Buffer"
+    );
+
+    wgpuQueueWriteBuffer(
+        renderer->queue,
+        mesh->index_buffer,
+        0,
+        mesh->indices.items,
+        mesh->indices.count * sizeof(u16)
+    );
+
+    // Edge instance buffer
+    mesh->edge_instance_buffer = create_buffer(
+        renderer->device,
+        mesh->edge_instance_capacity * sizeof(Instance),
+        WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+        "Index Buffer"
+    );
+
+    // Index buffer
+    mesh->edge_index_buffer = create_buffer(
+        renderer->device,
+        mesh->edge_indices.count * sizeof(u16),
+        WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+        "Index Buffer"
+    );
+
+    wgpuQueueWriteBuffer(
+        renderer->queue,
+        mesh->edge_index_buffer,
+        0,
+        mesh->edge_indices.items,
+        mesh->edge_indices.count * sizeof(u16)
+    );
+}
+
 ReturnStatus Renderer_init_windowed(
-    Renderer* renderer, WGPUSurface surface, u32 width, u32 height
+    Renderer* renderer,
+    const WGPUInstance instance,
+    const u32 width,
+    const u32 height
 ) {
     renderer->render_mode = RENDER_MODE_WINDOWED;
-    renderer->render_target.windowed.surface = surface;
     WgpuCallbackContext cb_ctx = {
         .completed = false,
         .adapter = &renderer->adapter,
         .device = &renderer->device,
     };
-    WGPUInstanceDescriptor instance_desc = {0};
-    WGPUInstance instance = wgpuCreateInstance(&instance_desc);
-    if (instance == NULL) {
-        LOG_ERROR("Failed to create WGPU instance");
-        return RETURN_FAILURE;
-    }
 
     // Adapter request
     if (renderer->adapter != NULL) {
@@ -172,7 +179,7 @@ ReturnStatus Renderer_init_windowed(
     }
     WGPURequestAdapterOptions adapter_options = {
         // Don't need a surface
-        .compatibleSurface = surface,
+        .compatibleSurface = renderer->render_target.windowed.surface,
         .powerPreference = WGPUPowerPreference_HighPerformance,
         .forceFallbackAdapter = false,
     };
@@ -189,6 +196,7 @@ ReturnStatus Renderer_init_windowed(
     if (!cb_ctx.success) {
         return RETURN_FAILURE;
     }
+    LOG_DEBUG("Adapter request successful");
 
     // Device request
     if (renderer->device != NULL) {
@@ -207,16 +215,22 @@ ReturnStatus Renderer_init_windowed(
         wgpuInstanceProcessEvents(instance);
     }
     if (!cb_ctx.success) {
+        LOG_ERROR("Device request error");
         wgpuAdapterRelease(renderer->adapter);
         return RETURN_FAILURE;
     }
+    LOG_DEBUG("Device request successful");
 
     // Get device queue
     renderer->queue = wgpuDeviceGetQueue(renderer->device);
 
     // Create render target
     WGPUSurfaceCapabilities surface_caps = {0};
-    wgpuSurfaceGetCapabilities(surface, renderer->adapter, &surface_caps);
+    wgpuSurfaceGetCapabilities(
+        renderer->render_target.windowed.surface,
+        renderer->adapter,
+        &surface_caps
+    );
     if (surface_caps.formatCount == 0) {
         LOG_ERROR("No supported surface formats found");
         return RETURN_FAILURE;
@@ -236,6 +250,11 @@ ReturnStatus Renderer_init_windowed(
         renderer->render_target.windowed.surface,
         &renderer->render_target.windowed.surface_config
     );
+    LOG_DEBUG(
+        "Configured surface size: [%d, %d]",
+        renderer->render_target.windowed.surface_config.width,
+        renderer->render_target.windowed.surface_config.height
+    );
 
     // Create depth texture
     WGPUTextureFormat depth_texture_format = WGPUTextureFormat_Depth24Plus;
@@ -243,8 +262,8 @@ ReturnStatus Renderer_init_windowed(
         .label = {"Depth Texture", WGPU_STRLEN},
         .size =
             (WGPUExtent3D){
-                .width = width > 0 ? width : 1,
-                .height = height > 0 ? height : 1,
+                .width = width > 0 ? width : 256,
+                .height = height > 0 ? height : 256,
                 .depthOrArrayLayers = 1,
             },
         .mipLevelCount = 1,
@@ -265,7 +284,13 @@ ReturnStatus Renderer_init_windowed(
         wgpuTextureViewRelease(renderer->depth_texture_view);
     }
     WGPUTextureViewDescriptor depth_texture_view_desc = {
-        .label = {"Depth Texture View", WGPU_STRLEN}
+        .label = {"Depth Texture View", WGPU_STRLEN},
+        .format = WGPUTextureFormat_Depth24Plus,
+        .dimension = WGPUTextureViewDimension_2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
     };
     renderer->depth_texture_view = wgpuTextureCreateView(
         renderer->depth_texture, &depth_texture_view_desc
@@ -288,7 +313,8 @@ ReturnStatus Renderer_init_windowed(
         wgpuDeviceCreateBuffer(renderer->device, &uniform_buffer_desc);
 
     // Create meshes
-    Mesh_create_cube(&renderer->meshes[0]);
+    Mesh_create_cube(&renderer->meshes[MESH_TYPE_CUBE]);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CUBE], renderer);
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry bind_group_layout_entries[] = {
@@ -299,7 +325,7 @@ ReturnStatus Renderer_init_windowed(
             .buffer = (WGPUBufferBindingLayout){
                 .type = WGPUBufferBindingType_Uniform,
                 .hasDynamicOffset = false,
-                .minBindingSize = 0,
+                .minBindingSize = sizeof(Uniform),
             },
         },
     };
@@ -313,7 +339,7 @@ ReturnStatus Renderer_init_windowed(
     );
 
     // Create bind group
-    WGPUBindGroupEntry bind_group_enties[] = {
+    WGPUBindGroupEntry bind_group_entries[] = {
         (WGPUBindGroupEntry){
             .binding = 0,
             .buffer = renderer->uniform_buffer,
@@ -324,9 +350,11 @@ ReturnStatus Renderer_init_windowed(
     WGPUBindGroupDescriptor bind_group_desc = {
         .label = {"Bind Group", WGPU_STRLEN},
         .layout = bind_group_layout,
-        .entries = bind_group_enties,
+        .entries = bind_group_entries,
+        .entryCount = 1,
     };
-    wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
+    renderer->uniform_bind_group =
+        wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
 
     // Create solid render pipeline
     char* default_shader_src =
@@ -374,6 +402,7 @@ ReturnStatus Renderer_init_windowed(
         .module = default_shader,
         .entryPoint = {"fs_main", WGPU_STRLEN},
         .targets = &color_target_state,
+        .targetCount = 1,
     };
     WGPUDepthStencilState depth_pencil_state = {
         .format = depth_texture_format,
@@ -565,7 +594,13 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
         wgpuTextureViewRelease(renderer->depth_texture_view);
     }
     WGPUTextureViewDescriptor depth_texture_view_desc = {
-        .label = {"Depth Texture View", WGPU_STRLEN}
+        .label = {"Depth Texture View", WGPU_STRLEN},
+        .format = WGPUTextureFormat_Depth24Plus,
+        .dimension = WGPUTextureViewDimension_2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
     };
     renderer->depth_texture_view = wgpuTextureCreateView(
         renderer->depth_texture, &depth_texture_view_desc
@@ -588,7 +623,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
         wgpuDeviceCreateBuffer(renderer->device, &uniform_buffer_desc);
 
     // Create meshes
-    Mesh_create_cube(&renderer->meshes[0]);
+    Mesh_create_cube(&renderer->meshes[MESH_TYPE_CUBE]);
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry bind_group_layout_entries[] = {
@@ -752,6 +787,225 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
     return RETURN_SUCCESS;
 }
 
+// TODO (mmckenna): Target for arena allocator
+void Renderer_render_mesh(
+    Renderer* renderer,
+    const MeshType mesh_type,
+    const WGPURenderPassEncoder render_pass_encoder
+) {
+    InstanceArray instances;
+    InstanceArray_init(&instances);
+    for (u32 i = 0; i < renderer->draw_commands.count; ++i) {
+        DrawCommand* cmd = &renderer->draw_commands.items[i];
+        if (cmd->mesh_type == mesh_type) {
+            InstanceArray_push(&instances, cmd->instance);
+        }
+    }
+
+    // No instances to render
+    if (instances.count == 0) {
+        return;
+    }
+
+    Mesh* mesh = &renderer->meshes[mesh_type];
+    if (instances.count > mesh->instance_capacity) {
+        Mesh_realloc_instance_buffer(mesh, renderer->device, instances.count);
+    }
+    wgpuQueueWriteBuffer(
+        renderer->queue,
+        mesh->instance_buffer,
+        0,
+        instances.items,
+        instances.count * sizeof(Instance)
+    );
+    wgpuRenderPassEncoderSetVertexBuffer(
+        render_pass_encoder,
+        0,
+        mesh->vertex_buffer,
+        0,
+        mesh->vertices.count * sizeof(Vertex)
+    );
+    wgpuRenderPassEncoderSetVertexBuffer(
+        render_pass_encoder,
+        1,
+        mesh->instance_buffer,
+        0,
+        instances.count * sizeof(Instance)
+    );
+    wgpuRenderPassEncoderSetIndexBuffer(
+        render_pass_encoder,
+        mesh->index_buffer,
+        WGPUIndexFormat_Uint16,
+        0,
+        mesh->indices.count * sizeof(u16)
+    );
+    wgpuRenderPassEncoderDrawIndexed(
+        render_pass_encoder, mesh->indices.count, instances.count, 0, 0, 0
+    );
+    InstanceArray_free(&instances);
+}
+
+void Renderer_render_pass_solid(
+    Renderer* renderer,
+    const WGPUCommandEncoder command_encoder,
+    const WGPUTextureView texture_view
+) {
+    WGPURenderPassColorAttachment color_attachment = {
+        .view = texture_view,
+        .loadOp = WGPULoadOp_Clear,
+        .clearValue =
+            (WGPUColor){
+                .r = 0.01,
+                .g = 0.01,
+                .b = 0.01,
+                .a = 1.0,
+            },
+        .storeOp = WGPUStoreOp_Store,
+    };
+    WGPURenderPassDepthStencilAttachment depth_stencil_attachment = {
+        .view = renderer->depth_texture_view,
+        .depthLoadOp = WGPULoadOp_Clear,
+        .depthClearValue = 1.0,
+        .depthStoreOp = WGPUStoreOp_Store,
+    };
+    WGPURenderPassDescriptor render_pass_desc = {
+        .label = {"Render Pass", WGPU_STRLEN},
+        .colorAttachments = &color_attachment,
+        .colorAttachmentCount = 1,
+        .depthStencilAttachment = &depth_stencil_attachment,
+    };
+    WGPURenderPassEncoder render_pass_encoder =
+        wgpuCommandEncoderBeginRenderPass(command_encoder, &render_pass_desc);
+    wgpuRenderPassEncoderSetPipeline(
+        render_pass_encoder, renderer->solid_pipeline
+    );
+    wgpuRenderPassEncoderSetBindGroup(
+        render_pass_encoder, 0, renderer->uniform_bind_group, 0, NULL
+    );
+    // TODO (mmckenna) : render mesh instances
+    for (u32 i = 0; i < MESH_TYPE_COUNT; ++i) {
+        switch (i) {
+            case MESH_TYPE_TRIANGLE: {
+                Renderer_render_mesh(
+                    renderer, MESH_TYPE_TRIANGLE, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_CUBE: {
+                Renderer_render_mesh(
+                    renderer, MESH_TYPE_CUBE, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_TETRAHEDRON: {
+                Renderer_render_mesh(
+                    renderer, MESH_TYPE_TETRAHEDRON, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_SPHERE: {
+                Renderer_render_mesh(
+                    renderer, MESH_TYPE_SPHERE, render_pass_encoder
+                );
+            } break;
+        }
+    }
+    wgpuRenderPassEncoderEnd(render_pass_encoder);
+    wgpuRenderPassEncoderRelease(render_pass_encoder);
+    return;
+}
+
+void Renderer_render_to_view(
+    Renderer* renderer, const WGPUTextureView texture_view
+) {
+    WGPUCommandEncoderDescriptor command_encoder_desc = {
+        .label = {"Encoder", WGPU_STRLEN}
+
+    };
+    WGPUCommandEncoder command_encoder =
+        wgpuDeviceCreateCommandEncoder(renderer->device, &command_encoder_desc);
+
+    Renderer_render_pass_solid(renderer, command_encoder, texture_view);
+    // TODO (mmckenna) : Outline render pass
+
+    WGPUCommandBufferDescriptor command_buffer_desc = {
+        .label = {"Command Buffer", WGPU_STRLEN}
+    };
+    WGPUCommandBuffer command_buffer =
+        wgpuCommandEncoderFinish(command_encoder, &command_buffer_desc);
+
+    wgpuQueueSubmit(renderer->queue, 1, &command_buffer);
+
+    // Cleanup
+    wgpuCommandBufferRelease(command_buffer);
+    wgpuCommandEncoderRelease(command_encoder);
+    return;
+}
+
+// Provide a single interface for all render modes
+ReturnStatus Renderer_render(Renderer* renderer) {
+    WGPUTextureViewDescriptor texture_view_desc = {
+        .dimension = WGPUTextureViewDimension_2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
+        .aspect = WGPUTextureAspect_All,
+    };
+    WGPUTextureView texture_view = {0};
+    ReturnStatus status = RETURN_SUCCESS;
+    switch (renderer->render_mode) {
+        case RENDER_MODE_HEADLESS: {
+            texture_view_desc.label =
+                (WGPUStringView){"Headless Texture View", WGPU_STRLEN};
+            texture_view_desc.format = WGPUTextureFormat_RGBA8Unorm;
+            texture_view = wgpuTextureCreateView(
+                renderer->render_target.headless.texture, &texture_view_desc
+            );
+            if (texture_view != NULL) wgpuTextureViewRelease(texture_view);
+        } break;
+        case RENDER_MODE_WINDOWED: {
+            texture_view_desc.label =
+                (WGPUStringView){"Headless Texture View", WGPU_STRLEN};
+            texture_view_desc.format =
+                renderer->render_target.windowed.surface_config.format;
+            WGPUSurfaceTexture surface_texture = {0};
+            wgpuSurfaceGetCurrentTexture(
+                renderer->render_target.windowed.surface, &surface_texture
+            );
+            // TODO (mmckenna): Handle each status variant
+            if (surface_texture.status !=
+                WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal) {
+                LOG_ERROR("Failed to get surface texture");
+                // TODO (mmckenna) reconfigure surface and re-initialize depth
+                // texture
+                status = RETURN_FAILURE;
+                break;
+            }
+
+            if (status == RETURN_SUCCESS) {
+                texture_view = wgpuTextureCreateView(
+                    surface_texture.texture, &texture_view_desc
+                );
+                Renderer_render_to_view(renderer, texture_view);
+                WGPUStatus present_status = wgpuSurfacePresent(
+                    renderer->render_target.windowed.surface
+                );
+                // TODO (mmckenna): Handle each status variant
+                if (present_status != WGPUStatus_Success) {
+                    LOG_ERROR("Failed to present surface");
+                    status = RETURN_FAILURE;
+                }
+            }
+            if (texture_view != NULL) wgpuTextureViewRelease(texture_view);
+            if (surface_texture.texture != NULL) {
+                wgpuTextureRelease(surface_texture.texture);
+            }
+        } break;
+    }
+    LOG_DEBUG("Command count: %ld", renderer->draw_commands.count);
+    DrawCommandArray_reset(&renderer->draw_commands);
+    LOG_DEBUG("Command count after: %ld", renderer->draw_commands.count);
+    return status;
+}
+
 void Renderer_destroy(Renderer* renderer) {
     if (renderer->uniform_buffer != NULL) {
         wgpuBufferRelease(renderer->uniform_buffer);
@@ -783,6 +1037,17 @@ void Renderer_destroy(Renderer* renderer) {
     if (renderer->queue != NULL) wgpuQueueRelease(renderer->queue);
     if (renderer->device != NULL) wgpuDeviceRelease(renderer->device);
     if (renderer->adapter != NULL) wgpuAdapterRelease(renderer->adapter);
+}
+
+void Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
+    renderer->render_target.windowed.surface_config.width = width;
+    renderer->render_target.windowed.surface_config.height = height;
+    wgpuSurfaceConfigure(
+        renderer->render_target.windowed.surface,
+        &renderer->render_target.windowed.surface_config
+    );
+    LOG_INFO("Surface configured successfully");
+    return;
 }
 
 #endif /* RENDERER_H */

@@ -13,10 +13,10 @@
       "-Ilib/cglm/include",
       "-o",
       "build/raijin",
-      "src/graphics.c"
+      "src/main.c"
     ],
     "directory": "/home/unicron/Dev/c/raijin",
-    "file": "/home/unicron/Dev/c/raijin/src/graphics.c",
+    "file": "/home/unicron/Dev/c/raijin/src/main.c",
     "output": "/home/unicron/Dev/c/raijin/build/raijin"
   },
   {
@@ -87,11 +87,11 @@
       "-x",
       "c",
       "-o",
-      "/tmp/graphics-188ee0.o",
-      "src/graphics.c"
+      "/tmp/main-2653d6.o",
+      "src/main.c"
     ],
     "directory": "/home/unicron/Dev/c/raijin",
-    "file": "/home/unicron/Dev/c/raijin/src/graphics.c",
-    "output": "/tmp/graphics-188ee0.o"
+    "file": "/home/unicron/Dev/c/raijin/src/main.c",
+    "output": "/tmp/main-2653d6.o"
   }
 ]

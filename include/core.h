@@ -15,8 +15,8 @@
 #define VEC_MAX_WRITE 64
 #define EPSILON 1e-9
 #define DEFAULT_ARRAY_CAPACITY 64
-#define DEG2RAD M_PI/180.0f
-#define RAD2DEG 180.0f/M_PI
+#define DEG2RAD M_PI / 180.0f
+#define RAD2DEG 180.0f / M_PI
 
 #ifndef RAIJIN_REALLOC
 #include <stdlib.h>
@@ -84,6 +84,12 @@
         (arr)->count += (new_items_count);                             \
     }                                                                  \
                                                                        \
+    static inline void name##_reset(name* arr) {                       \
+        memset(arr->items, 0, sizeof(name) * arr->count);              \
+        arr->count = 0;                                                \
+        arr->capacity = 0;                                             \
+    }                                                                  \
+                                                                       \
     static inline void name##_free(name* arr) {                        \
         if (arr->items) {                                              \
             RAIJIN_FREE(arr->items);                                   \
@@ -126,7 +132,7 @@ typedef enum LogLevel {
 } LogLevel;
 
 #ifndef LOG_VERBOSITY
-#define LOG_VERBOSITY LOG_LEVEL_INFO
+#define LOG_VERBOSITY LOG_LEVEL_TRACE
 #endif
 
 // Helper macro to get just the filename (not full path)
@@ -186,7 +192,6 @@ typedef enum LogLevel {
  */
 WGPUBuffer create_buffer(
     WGPUDevice device,
-    const void* data,
     const u32 size,
     const WGPUBufferUsage usage,
     const char* label
@@ -203,9 +208,6 @@ WGPUBuffer create_buffer(
         fprintf(stderr, "Failed to create vertex buffer");
         return NULL;
     }
-
-    wgpuQueueWriteBuffer(wgpuDeviceGetQueue(device), buffer, 0, data, size);
-    LOG_INFO("%s created successfully", label);
     return buffer;
 }
 

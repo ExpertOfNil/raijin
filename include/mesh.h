@@ -1,17 +1,24 @@
 #ifndef MESH_H
 #define MESH_H
 
+#include "cglm/cglm.h"
 #include "cglm/vec3.h"
+#include "cglm/mat4.h"
 #include "core.h"
 #include "webgpu.h"
+
+#define DEFAULT_INSTANCE_CAPACITY 256
+
+DEFINE_DYNAMIC_ARRAY(u16, IndexArray)
 
 typedef struct Vertex {
     vec3 position;
     vec3 color;
     vec3 normal;
 } Vertex;
+DEFINE_DYNAMIC_ARRAY(Vertex, VertexArray)
 
-static WGPUVertexBufferLayout Vertex_desc(void) {
+WGPUVertexBufferLayout Vertex_desc(void) {
     static WGPUVertexAttribute attribs[3] = {
         {
             .format = WGPUVertexFormat_Float32x3,
@@ -38,6 +45,63 @@ static WGPUVertexBufferLayout Vertex_desc(void) {
     };
 }
 
+typedef struct Instance {
+    mat4 model_matrix;
+    vec4 color;
+} Instance;
+DEFINE_DYNAMIC_ARRAY(Instance, InstanceArray)
+
+WGPUVertexBufferLayout Instance_desc(void) {
+    static WGPUVertexAttribute attribs[5] = {
+        {
+            .format = WGPUVertexFormat_Float32x4,
+            .offset = 0 * 4 * sizeof(f32),
+            .shaderLocation = 3,
+        },
+        {
+            .format = WGPUVertexFormat_Float32x4,
+            .offset = 1 * 4 * sizeof(f32),
+            .shaderLocation = 4,
+        },
+        {
+            .format = WGPUVertexFormat_Float32x4,
+            .offset = 2 * 4 * sizeof(f32),
+            .shaderLocation = 5,
+        },
+        {
+            .format = WGPUVertexFormat_Float32x4,
+            .offset = 3 * 4 * sizeof(f32),
+            .shaderLocation = 6,
+        },
+        {
+            .format = WGPUVertexFormat_Float32x4,
+            .offset = 4 * 4 * sizeof(f32),
+            .shaderLocation = 7,
+        },
+    };
+
+    return (WGPUVertexBufferLayout){
+        .arrayStride = sizeof(Instance),
+        .stepMode = WGPUVertexStepMode_Instance,
+        .attributes = attribs,
+        .attributeCount = 5,
+    };
+}
+
+void Instance_set_position(Instance* instance, vec3 position) {
+    glm_vec3_copy(position, instance->model_matrix[3]);
+}
+
+void Instance_from_position_rotation(
+    Instance* instance, vec3 position, mat3 rotation, f32 scale, vec4 color
+) {
+    glm_mat4_identity(instance->model_matrix);
+    glm_mat4_ins3(rotation, instance->model_matrix);
+    glm_mat4_scale(instance->model_matrix, scale);
+    glm_translate(instance->model_matrix, position);
+    glm_vec4_copy(color, instance->color);
+}
+
 typedef enum {
     MESH_TYPE_TRIANGLE,
     MESH_TYPE_CUBE,
@@ -45,9 +109,6 @@ typedef enum {
     MESH_TYPE_SPHERE,
     MESH_TYPE_COUNT,
 } MeshType;
-
-DEFINE_DYNAMIC_ARRAY(Vertex, VertexArray)
-DEFINE_DYNAMIC_ARRAY(u16, IndexArray)
 
 typedef struct Mesh {
     VertexArray vertices;
@@ -61,17 +122,22 @@ typedef struct Mesh {
     WGPUBuffer edge_instance_buffer;
     u32 edge_instance_capacity;
 } Mesh;
+DEFINE_DYNAMIC_ARRAY(Mesh, MeshArray)
 
 void Mesh_realloc_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 ) {
     while (mesh->instance_capacity < new_capacity) {
-        mesh->instance_capacity *= 2;
+        if (mesh->instance_capacity == 0) {
+            mesh->instance_capacity = DEFAULT_INSTANCE_CAPACITY * sizeof(Instance);
+        } else {
+            mesh->instance_capacity *= 2;
+        }
+        LOG_DEBUG("New instance capacity: %d", mesh->instance_capacity);
     }
     mesh->instance_buffer = create_buffer(
         device,
-        &mesh->indices.items,
-        sizeof(mesh->indices.items),
+        mesh->instance_capacity * sizeof(Instance),
         WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
         "Mesh Instance Buffer"
     );
@@ -85,8 +151,7 @@ void Mesh_realloc_edge_instance_buffer(
     }
     mesh->instance_buffer = create_buffer(
         device,
-        &mesh->indices.items,
-        sizeof(mesh->indices.items),
+        mesh->instance_capacity * sizeof(Instance),
         WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
         "Mesh Edge Instance Buffer"
     );
