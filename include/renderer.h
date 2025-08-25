@@ -8,6 +8,8 @@
 #include "mesh.h"
 #include "webgpu.h"
 
+/* Types */
+
 typedef struct Uniform {
     mat4 view_proj;
 } Uniform;
@@ -29,45 +31,6 @@ typedef struct WgpuCallbackContext {
     WGPUAdapter* adapter;
     WGPUDevice* device;
 } WgpuCallbackContext;
-
-// WGPU callback functions
-static void adapter_request_callback(
-    WGPURequestAdapterStatus status,
-    WGPUAdapter adapter,
-    WGPUStringView msg,
-    void* userdata1,
-    void* userdata2
-) {
-    WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
-    ctx->completed = true;
-    if (status == WGPURequestAdapterStatus_Success) {
-        LOG_INFO("Adapter acquired successfully");
-        ctx->success = true;
-        *ctx->adapter = adapter;
-    } else {
-        LOG_ERROR("Failed to acquire adapter: %.*s", (int)msg.length, msg.data);
-        ctx->success = false;
-    }
-}
-
-static void device_request_callback(
-    WGPURequestDeviceStatus status,
-    WGPUDevice device,
-    WGPUStringView msg,
-    void* userdata1,
-    void* userdata2
-) {
-    WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
-    ctx->completed = true;
-    if (status == WGPURequestDeviceStatus_Success) {
-        LOG_INFO("Device acquired successfully");
-        ctx->success = true;
-        *ctx->device = device;
-    } else {
-        LOG_ERROR("Failed to acquire device: %.*s", (int)msg.length, msg.data);
-        ctx->success = false;
-    }
-}
 
 typedef struct Renderer {
     bool enable_edges;
@@ -93,6 +56,54 @@ typedef struct Renderer {
     DrawCommandArray draw_commands;
     Mesh meshes[MESH_TYPE_COUNT];
 } Renderer;
+
+/* Function Prototypes */
+
+void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer);
+ReturnStatus Renderer_init_windowed(
+    Renderer* renderer,
+    const WGPUInstance instance,
+    const u32 width,
+    const u32 height
+);
+ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height);
+void Renderer_render_mesh(
+    Renderer* renderer,
+    const MeshType mesh_type,
+    const WGPURenderPassEncoder render_pass_encoder
+);
+void Renderer_render_pass_solid(
+    Renderer* renderer,
+    const WGPUCommandEncoder command_encoder,
+    const WGPUTextureView texture_view
+);
+void Renderer_render_to_view(
+    Renderer* renderer, const WGPUTextureView texture_view
+);
+ReturnStatus Renderer_render(Renderer* renderer);
+void Renderer_destroy(Renderer* renderer);
+void Renderer_handle_resize(Renderer* renderer, u32 width, u32 height);
+void Renderer_update_uniforms(
+    Renderer* renderer, mat4 proj_matrix, mat4 view_matrix
+);
+
+static inline void adapter_request_callback(
+    WGPURequestAdapterStatus status,
+    WGPUAdapter adapter,
+    WGPUStringView msg,
+    void* userdata1,
+    void* userdata2
+);
+
+static inline void device_request_callback(
+    WGPURequestDeviceStatus status,
+    WGPUDevice device,
+    WGPUStringView msg,
+    void* userdata1,
+    void* userdata2
+);
+
+/* Functions */
 
 void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
     // Vertex buffer
@@ -1072,6 +1083,46 @@ void Renderer_update_uniforms(
     wgpuQueueWriteBuffer(
         renderer->queue, renderer->uniform_buffer, 0, &uniform, sizeof(Uniform)
     );
+}
+
+/* WGPU callback functions */
+
+static inline void adapter_request_callback(
+    WGPURequestAdapterStatus status,
+    WGPUAdapter adapter,
+    WGPUStringView msg,
+    void* userdata1,
+    void* userdata2
+) {
+    WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
+    ctx->completed = true;
+    if (status == WGPURequestAdapterStatus_Success) {
+        LOG_INFO("Adapter acquired successfully");
+        ctx->success = true;
+        *ctx->adapter = adapter;
+    } else {
+        LOG_ERROR("Failed to acquire adapter: %.*s", (int)msg.length, msg.data);
+        ctx->success = false;
+    }
+}
+
+static inline void device_request_callback(
+    WGPURequestDeviceStatus status,
+    WGPUDevice device,
+    WGPUStringView msg,
+    void* userdata1,
+    void* userdata2
+) {
+    WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
+    ctx->completed = true;
+    if (status == WGPURequestDeviceStatus_Success) {
+        LOG_INFO("Device acquired successfully");
+        ctx->success = true;
+        *ctx->device = device;
+    } else {
+        LOG_ERROR("Failed to acquire device: %.*s", (int)msg.length, msg.data);
+        ctx->success = false;
+    }
 }
 
 #endif /* RENDERER_H */

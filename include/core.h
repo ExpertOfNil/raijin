@@ -101,36 +101,6 @@
 
 #define ARRAY_COUNT(arr) (sizeof((arr)) / sizeof((arr)[0]))
 
-typedef enum {
-    RETURN_SUCCESS,
-    RETURN_FAILURE,
-} ReturnStatus;
-
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef size_t usize;
-
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef ssize_t isize;
-
-typedef float f32;
-typedef double f64;
-
-typedef enum LogLevel {
-    LOG_LEVEL_NONE,
-    LOG_LEVEL_TRACE,
-    LOG_LEVEL_DEBUG,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_ERROR,
-    LOG_LEVEL_CRITICAL,
-} LogLevel;
-
 #ifndef LOG_VERBOSITY
 #define LOG_VERBOSITY LOG_LEVEL_TRACE
 #endif
@@ -180,6 +150,50 @@ typedef enum LogLevel {
 #define LOG_ERROR(fmt, ...) LOG(LOG_LEVEL_ERROR, "ERROR", fmt, ##__VA_ARGS__)
 #define LOG_CRITICAL(fmt, ...) \
     LOG(LOG_LEVEL_CRITICAL, "CRITICAL", fmt, ##__VA_ARGS__)
+
+typedef enum {
+    RETURN_SUCCESS,
+    RETURN_FAILURE,
+} ReturnStatus;
+
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef size_t usize;
+
+typedef int8_t i8;
+typedef int16_t i16;
+typedef int32_t i32;
+typedef int64_t i64;
+typedef ssize_t isize;
+
+typedef float f32;
+typedef double f64;
+
+typedef enum LogLevel {
+    LOG_LEVEL_NONE,
+    LOG_LEVEL_TRACE,
+    LOG_LEVEL_DEBUG,
+    LOG_LEVEL_INFO,
+    LOG_LEVEL_WARN,
+    LOG_LEVEL_ERROR,
+    LOG_LEVEL_CRITICAL,
+} LogLevel;
+
+DEFINE_DYNAMIC_ARRAY(char, CharArray)
+
+/* Function Prototypes */
+
+WGPUBuffer create_buffer(
+    WGPUDevice device,
+    const u32 size,
+    const WGPUBufferUsage usage,
+    const char* label
+);
+ReturnStatus load_shader(const char* path, CharArray* buffer);
+
+/* Functions */
 
 /** Create a WGPUBuffer
  *

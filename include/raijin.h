@@ -17,17 +17,23 @@
 
 #define CGLM_CONFIG_CLIP_CONTROL CGLM_CLIP_CONTROL_RH_ZO
 
+/* Types */
+
 typedef struct Raijin {
     SdlWindow window;
     Renderer renderer;
 } Raijin;
 
+/* Function prototypes */
+
 ReturnStatus Raijin_init(Raijin*, const char* title, u32 width, u32 height);
 void Raijin_handle_events(Raijin* engine);
-//void Raijin_draw_cube(
-//    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
-//);
+ void Raijin_draw_cube(
+     Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+);
 void Raijin_destroy(Raijin* engine);
+
+/* Function */
 
 ReturnStatus Raijin_init(
     Raijin* engine, const char* title, u32 width, u32 height

@@ -2,7 +2,7 @@
 #include "nob.h"
 
 #define COMMON_CFLAGS \
-    "-std=c99", "-Wall", "-Wextra", "-pedantic", "-ggdb"
+    "-std=c99", "-Wall", "-Wextra", "-pedantic", "-ggdb", "-Wno-gnu-zero-variadic-macro-arguments"
 #define BUILD_DIR "build/"
 #define SRC_DIR "src/"
 

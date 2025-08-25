@@ -12,7 +12,8 @@
 #include "renderer.h"
 #include "webgpu.h"
 
-// Core structures
+/* Types */
+
 typedef struct {
     SDL_Window* handle;
     int width;
@@ -20,10 +21,24 @@ typedef struct {
     bool should_close;
 } SdlWindow;
 
+/* Function Prototypes */
+
+ReturnStatus SdlWindow_init(
+    SdlWindow* window, const char* title, int width, int height
+);
+void SdlWindow_handle_events(SdlWindow* window, Renderer* renderer);
+void SdlWindow_handle_events(SdlWindow* window, Renderer* renderer);
+void SdlWindow_destroy(SdlWindow* window);
+
+WGPUSurface create_surface_sdl3(
+    WGPUInstance instance, SDL_Window* window
+);
+
+/* Functions */
+
 ReturnStatus SdlWindow_init(
     SdlWindow* window, const char* title, int width, int height
 ) {
-    int log_category = SDL_LOG_CATEGORY_VIDEO;
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         LOG_ERROR("SDL_Init: %s\n", SDL_GetError());
         return false;
@@ -212,9 +227,7 @@ static WGPUSurface create_surface_sdl3_macos(
 }
 #endif
 
-static WGPUSurface create_surface_sdl3(
-    WGPUInstance instance, SDL_Window* window
-) {
+WGPUSurface create_surface_sdl3(WGPUInstance instance, SDL_Window* window) {
 #ifdef _WIN32
     return create_surface_sdl3_windows(instance, window);
 #elif defined(__linux__)
