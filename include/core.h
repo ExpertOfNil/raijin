@@ -211,41 +211,51 @@ WGPUBuffer create_buffer(
     return buffer;
 }
 
-char* load_shader(const char* path) {
+/** Load a shader from path
+ *
+ * @param[in] path          File path
+ * @param[in,out] buffer    Buffer to write file contents to
+ * @returns                 Return status
+ */
+// TODO (mmckenna): add validation
+ReturnStatus load_shader(const char* path, CharArray* buffer) {
+    LOG_DEBUG("Loading shader from %s", path);
     FILE* f = fopen(path, "rb");
     if (!f) {
-        perror("fopen");
-        return NULL;
+        LOG_ERROR("Failed to open file: %s", path);
+        return RETURN_FAILURE;
     }
     if (fseek(f, 0, SEEK_END) != 0) {
         fprintf(stderr, "Failed to read file: %s", path);
-        return NULL;
+        return RETURN_FAILURE;
     }
 
     size_t file_size = ftell(f);
     if (file_size < 0) {
-        perror("ftell");
+        LOG_ERROR("Failed to get file size");
         fclose(f);
-        return NULL;
+        return RETURN_FAILURE;
     }
     rewind(f);
 
-    char* buffer = malloc(file_size + 1);
-    if (!buffer) {
-        perror("malloc");
+    CharArray_reserve(buffer, file_size);
+    if (!buffer->items) {
+        LOG_ERROR("Failed to allocate memory for buffer");
+        CharArray_free(buffer);
         fclose(f);
-        return NULL;
+        return RETURN_FAILURE;
     }
 
-    if (fread(buffer, 1, file_size, f) != file_size) {
-        perror("fread");
-        free(buffer);
+    if (fread(buffer->items, 1, file_size, f) != file_size) {
+        LOG_ERROR("Failed to read file");
+        CharArray_free(buffer);
         fclose(f);
-        return NULL;
+        return RETURN_FAILURE;
     }
-    buffer[file_size] = '\0';
+    buffer->count += file_size;
     fclose(f);
-    return buffer;
+    LOG_DEBUG("Shader contents:\n%.*s", (int)buffer->count, buffer->items);
+    return RETURN_SUCCESS;
 }
 
 #endif /* TYPES_H */

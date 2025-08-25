@@ -357,11 +357,17 @@ ReturnStatus Renderer_init_windowed(
         wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
 
     // Create solid render pipeline
-    char* default_shader_src =
-        load_shader(RAIJIN_ASSETS_DIR "/shaders/default_shader.wgsl");
+    CharArray default_shader_src = {0};
+    ReturnStatus shader_load_status = load_shader(
+        RAIJIN_ASSETS_DIR "/shaders/default_shader.wgsl", &default_shader_src
+    );
+    if (shader_load_status != RETURN_SUCCESS) {
+        LOG_ERROR("Failed to load shader");
+        // TODO (mmcknna) : what to do when shader loading fails?
+    }
     WGPUShaderSourceWGSL wgsl_desc = {
         .chain.sType = WGPUSType_ShaderSourceWGSL,
-        .code = {.data = default_shader_src, WGPU_STRLEN}
+        .code = {.data = default_shader_src.items, default_shader_src.count}
     };
     WGPUShaderModuleDescriptor default_shader_desc = {
         .nextInChain = &wgsl_desc.chain,
@@ -478,6 +484,7 @@ ReturnStatus Renderer_init_windowed(
     renderer->edges_pipeline =
         wgpuDeviceCreateRenderPipeline(renderer->device, &edges_pipeline_desc);
 
+    CharArray_free(&default_shader_src);
     return RETURN_SUCCESS;
 }
 
@@ -664,11 +671,17 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
     wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
 
     // Create solid render pipeline
-    char* default_shader_src =
-        load_shader(RAIJIN_ASSETS_DIR "/shaders/default_shader.wgsl");
+    CharArray default_shader_src = {0};
+    ReturnStatus shader_load_status = load_shader(
+        RAIJIN_ASSETS_DIR "/shaders/default_shader.wgsl", &default_shader_src
+    );
+    if (shader_load_status != RETURN_SUCCESS) {
+        LOG_ERROR("Failed to load shader");
+        // TODO (mmcknna) : what to do when shader loading fails?
+    }
     WGPUShaderSourceWGSL wgsl_desc = {
         .chain.sType = WGPUSType_ShaderSourceWGSL,
-        .code = {.data = default_shader_src, WGPU_STRLEN}
+        .code = {.data = default_shader_src.items, default_shader_src.count}
     };
     WGPUShaderModuleDescriptor default_shader_desc = {
         .nextInChain = &wgsl_desc.chain,
@@ -784,6 +797,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
     renderer->edges_pipeline =
         wgpuDeviceCreateRenderPipeline(renderer->device, &edges_pipeline_desc);
 
+    CharArray_free(&default_shader_src);
     return RETURN_SUCCESS;
 }
 
