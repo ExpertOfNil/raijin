@@ -149,7 +149,7 @@ static const Vertex CUBE_VERTICES[8] = {
     },
 };
 
-static WGPUVertexBufferLayout Vertex_desc(void) {
+static inline WGPUVertexBufferLayout Vertex_desc(void) {
     static WGPUVertexAttribute attribs[3] = {
         {
             .format = WGPUVertexFormat_Float32x3,
@@ -176,7 +176,7 @@ static WGPUVertexBufferLayout Vertex_desc(void) {
     };
 }
 
-static WGPUVertexBufferLayout Instance_desc(void) {
+static inline WGPUVertexBufferLayout Instance_desc(void) {
     static WGPUVertexAttribute attribs[5] = {
         {
             .format = WGPUVertexFormat_Float32x4,

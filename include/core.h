@@ -9,6 +9,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <cglm/vec2.h>
 
 #include "webgpu.h"
 
@@ -182,6 +183,13 @@ typedef enum LogLevel {
 } LogLevel;
 
 DEFINE_DYNAMIC_ARRAY(char, CharArray)
+
+typedef struct MouseState {
+    bool button_left;
+    bool button_middle;
+    bool button_right;
+    vec2 position;
+} MouseState;
 
 /* Function Prototypes */
 

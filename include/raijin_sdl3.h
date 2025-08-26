@@ -3,10 +3,13 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_log.h>
+#include <SDL3/SDL_mouse.h>
+#include <SDL3/SDL_oldnames.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "camera.h"
 #include "core.h"
 #include "mesh.h"
 #include "renderer.h"
@@ -26,13 +29,15 @@ typedef struct {
 ReturnStatus SdlWindow_init(
     SdlWindow* window, const char* title, int width, int height
 );
-void SdlWindow_handle_events(SdlWindow* window, Renderer* renderer);
-void SdlWindow_handle_events(SdlWindow* window, Renderer* renderer);
+void SdlWindow_handle_events(
+    SdlWindow* window,
+    Renderer* renderer,
+    MouseState* mouse,
+    PanOrbitCamera* cam
+);
 void SdlWindow_destroy(SdlWindow* window);
 
-WGPUSurface create_surface_sdl3(
-    WGPUInstance instance, SDL_Window* window
-);
+WGPUSurface create_surface_sdl3(WGPUInstance instance, SDL_Window* window);
 
 /* Functions */
 
@@ -69,24 +74,67 @@ void SdlWindow_destroy(SdlWindow* window) {
     LOG_INFO("Window destroyed");
 }
 
-void SdlWindow_handle_events(SdlWindow* window, Renderer* renderer) {
+void SdlWindow_handle_events(
+    SdlWindow* window,
+    Renderer* renderer,
+    MouseState* mouse,
+    PanOrbitCamera* cam
+) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
-            case SDL_EVENT_QUIT:
+            case SDL_EVENT_QUIT: {
                 window->should_close = true;
-                break;
-            case SDL_EVENT_WINDOW_RESIZED:
+            } break;
+            case SDL_EVENT_WINDOW_RESIZED: {
                 window->width = event.window.data1;
                 window->height = event.window.data2;
                 Renderer_handle_resize(renderer, window->width, window->height);
-                break;
-            case SDL_EVENT_KEY_DOWN:
+            } break;
+            case SDL_EVENT_KEY_DOWN: {
                 if (event.key.key == SDLK_ESCAPE) {
                     window->should_close = true;
                 }
-                break;
+            } break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+                SDL_MouseButtonEvent* mouse_event = &event.button;
+                if (mouse_event->button == SDL_BUTTON_LEFT) {
+                    mouse->button_left = true;
+                } else if (mouse_event->button == SDL_BUTTON_MIDDLE) {
+                    mouse->button_middle = true;
+                } else if (mouse_event->button == SDL_BUTTON_RIGHT) {
+                    mouse->button_right = true;
+                }
+                mouse->position[0] = mouse_event->x;
+                mouse->position[1] = mouse_event->y;
+            } break;
+            case SDL_EVENT_MOUSE_BUTTON_UP: {
+                SDL_MouseButtonEvent* mouse_event = &event.button;
+                if (mouse_event->button == SDL_BUTTON_LEFT) {
+                    mouse->button_left = false;
+                } else if (mouse_event->button == SDL_BUTTON_MIDDLE) {
+                    mouse->button_middle = false;
+                } else if (mouse_event->button == SDL_BUTTON_RIGHT) {
+                    mouse->button_right = false;
+                }
+                mouse->position[0] = mouse_event->x;
+                mouse->position[1] = mouse_event->y;
+            } break;
+            case SDL_EVENT_MOUSE_MOTION: {
+                SDL_MouseMotionEvent* mouse_motion = &event.motion;
+                vec2 delta = {
+                    mouse_motion->x - mouse->position[0],
+                    mouse_motion->y - mouse->position[1],
+                };
+                LOG_DEBUG("Delta: [%9.3f, %9.3f]", delta[0], delta[1]);
+                if (mouse->button_left) {
+                    PanOrbitCamera_orbit(cam, delta);
+                }
+                mouse->position[0] = mouse_motion->x;
+                mouse->position[1] = mouse_motion->y;
+            } break;
         }
+        Renderer_update_uniforms(renderer, cam->proj_matrix, cam->view_matrix);
     }
 }
 

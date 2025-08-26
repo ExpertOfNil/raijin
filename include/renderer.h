@@ -1025,9 +1025,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             }
         } break;
     }
-    LOG_DEBUG("Command count: %ld", renderer->draw_commands.count);
     DrawCommandArray_reset(&renderer->draw_commands);
-    LOG_DEBUG("Command count after: %ld", renderer->draw_commands.count);
     return status;
 }
 

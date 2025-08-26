@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 
+#include "camera.h"
 #include "cglm/cam.h"
 #include "cglm/common.h"
 #include "cglm/io.h"
@@ -10,26 +11,28 @@
 #include "core.h"
 #include "mesh.h"
 #include "renderer.h"
-
-// #ifdef RAIJIN_SDL3_IMPL
-#include "raijin_sdl3.h"
 #include "webgpu.h"
 
 #define CGLM_CONFIG_CLIP_CONTROL CGLM_CLIP_CONTROL_RH_ZO
+
+// #ifdef RAIJIN_SDL3_IMPL
+#include "raijin_sdl3.h"
 
 /* Types */
 
 typedef struct Raijin {
     SdlWindow window;
     Renderer renderer;
+    PanOrbitCamera camera;
+    MouseState mouse;
 } Raijin;
 
 /* Function prototypes */
 
 ReturnStatus Raijin_init(Raijin*, const char* title, u32 width, u32 height);
 void Raijin_handle_events(Raijin* engine);
- void Raijin_draw_cube(
-     Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+void Raijin_draw_cube(
+    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
 );
 void Raijin_destroy(Raijin* engine);
 
@@ -38,6 +41,12 @@ void Raijin_destroy(Raijin* engine);
 ReturnStatus Raijin_init(
     Raijin* engine, const char* title, u32 width, u32 height
 ) {
+    engine->mouse = (MouseState){
+        .button_left = false,
+        .button_middle = false,
+        .button_right = false,
+        .position = {0.0f, 0.0f},
+    };
     if (!SdlWindow_init(&engine->window, title, width, height)) {
         return RETURN_FAILURE;
     }
@@ -65,29 +74,25 @@ ReturnStatus Raijin_init(
         return RETURN_FAILURE;
     }
 
-    f32 aspect = (f32)width / (f32)height;
-    mat4 proj_matrix = {0};
-    glm_perspective(glm_rad(60.0f), aspect, 0.1, 1000.0, proj_matrix);
-    mat4 view_matrix = {0};
-    glm_lookat(
-        (vec3){10.0f, 10.0f, 10.0f},
-        (vec3){0.0f, 0.0f, 0.0f},
-        (vec3){0.0f, 0.0f, 1.0f},
-        view_matrix
+    PanOrbitCamera_init(&engine->camera);
+    Renderer_update_uniforms(
+        &engine->renderer,
+        engine->camera.proj_matrix,
+        engine->camera.view_matrix
     );
-    Renderer_update_uniforms(&engine->renderer, proj_matrix, view_matrix);
     return RETURN_SUCCESS;
 }
 
 void Raijin_handle_events(Raijin* engine) {
-    SdlWindow_handle_events(&engine->window, &engine->renderer);
+    SdlWindow_handle_events(
+        &engine->window, &engine->renderer, &engine->mouse, &engine->camera
+    );
 }
 
 void Raijin_destroy(Raijin* engine) { SdlWindow_destroy(&engine->window); }
 // #endif
 
 ReturnStatus Raijin_render(Raijin* engine) {
-    // Renderer_update_uniforms(&engine->renderer, proj_matrix, view_matrix);
     return Renderer_render(&engine->renderer);
 }
 
@@ -97,9 +102,6 @@ void Raijin_draw_cube_instance(Raijin* engine, Instance instance) {
         .instance = instance,
     };
     DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
-    LOG_DEBUG(
-        "Array Push command count: %ld", engine->renderer.draw_commands.count
-    );
 }
 
 void Raijin_draw_cube(
@@ -109,7 +111,7 @@ void Raijin_draw_cube(
     glm_mat4_identity(instance.model_matrix);
     glm_mat4_ins3(rotation, instance.model_matrix);
     glm_translate(instance.model_matrix, position);
-    glm_mat4_scale(instance.model_matrix, scale);
+    glm_scale_uni(instance.model_matrix, scale);
     Raijin_draw_cube_instance(engine, instance);
 }
 
