@@ -7,6 +7,7 @@
 #include "core.h"
 #include "webgpu.h"
 #include "cimpl_core.h"
+#include "cimpl_glm.h"
 
 #define DEFAULT_INSTANCE_CAPACITY 256
 
@@ -273,6 +274,126 @@ void Mesh_create_cube(Mesh* mesh) {
     IndexArray_push_many(
         &mesh->edge_indices, CUBE_EDGE_INDICES, n_edge_indices
     );
+}
+
+void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
+	u32 longitude = 2 * divisions;
+	u32 latitude = divisions;
+
+	u32 n_vertices = 2 + (latitude - 1) * longitude;
+	// 2 tris per quad
+	u32 n_indices = 6 * longitude * (latitude - 1);
+	u32 n_edge_indices = 2 * longitude * ((latitude - 1) + longitude + (latitude - 2));
+
+    VertexArray_reserve(&mesh->vertices, n_vertices);
+    IndexArray_reserve(&mesh->indices, n_indices);
+    IndexArray_reserve(&mesh->edge_indices, n_edge_indices);
+
+    u32* idx = &mesh->vertices.count;
+    *idx = 0;
+	Vertex* vertex = &mesh->vertices.items[*idx];
+
+	// Top pole
+    glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, vertex->position);
+    glm_vec3_normalize_to(vertex->position, vertex->normal);
+	u32 top_index = 0;
+	*idx += 1;
+
+	// Rings (excluding poles)
+	for (u32 i = 1; i < latitude; ++i) {
+		f32 phi = (f32)i * PI / (f32)latitude; // [0, π]
+		f32 y = cosf(phi);
+		f32 r = sinf(phi);
+
+		for (u32 j = 0; j < longitude; ++j) {
+			f32 theta = (f32)j * 2.0f * PI / (f32)longitude; // [0, 2π)
+			f32 x = r * cos(theta);
+			f32 z = r * sin(theta);
+
+			vertex = &mesh->vertices.items[*idx];
+            glm_vec3_copy((vec3){x, y, z}, vertex->position);
+            glm_vec3_normalize_to(vertex->position, vertex->normal);
+			*idx += 1;
+		}
+	}
+
+	// Bottom pole
+	vertex = &mesh->vertices.items[*idx];
+    glm_vec3_copy((vec3){0, -1, 0}, vertex->position);
+    glm_vec3_normalize_to(vertex->position, vertex->normal);
+	u32 bottom_index = *idx;
+	*idx += 1;
+
+	// === Indices ===
+
+	// Top cap
+	for (u32 i = 0; i < longitude; ++i) {
+		u32 next = (i + 1) % longitude;
+        IndexArray_push(&mesh->indices, 1 + (u16)top_index);
+        IndexArray_push(&mesh->indices, 1 + (u16)next);
+        IndexArray_push(&mesh->indices, 1 + (u16)i);
+	}
+
+	// Middle quads
+	for (u32 i = 0; i < (latitude - 2); ++i) {
+		u32 row = 1 + i * longitude;
+		u32 next_row = row + longitude;
+
+		for (u32 j = 0; j < longitude; ++j) {
+			u32 next = (j + 1) % longitude;
+
+			u16 a = (u16)(row + j);
+			u16 b = (u16)(row + next);
+			u16 c = (u16)(next_row + j);
+			u16 d = (u16)(next_row + next);
+
+			IndexArray_push(&mesh->indices, a);
+			IndexArray_push(&mesh->indices, b);
+			IndexArray_push(&mesh->indices, c);
+			IndexArray_push(&mesh->indices, b);
+			IndexArray_push(&mesh->indices, d);
+			IndexArray_push(&mesh->indices, c);
+		}
+	}
+
+	// Bottom cap
+	u32 base = 1 + (latitude - 2) * longitude;
+	for (u32 j = 0; j < longitude; ++j) {
+		u32 next = (j + 1) % longitude;
+		IndexArray_push(&mesh->indices, (u16)(base + j));
+		IndexArray_push(&mesh->indices, (u16)(base + next));
+		IndexArray_push(&mesh->indices, (u16)(bottom_index));
+	}
+
+	// === Edge Indices ===
+	for (u32 j = 0; j < longitude; ++j) {
+		// Top pole to first ring
+		IndexArray_push(&mesh->edge_indices, (u16)(top_index));
+		IndexArray_push(&mesh->edge_indices, (u16)(1 + j));
+
+		// Connect rings vertically
+		for (u32 i = 0; i < (latitude - 2); ++i) {
+			u32 current_ring = 1 + i * longitude;
+			u32 next_ring = current_ring + longitude;
+			IndexArray_push(&mesh->edge_indices, (u16)(current_ring + j));
+			IndexArray_push(&mesh->edge_indices, (u16)(next_ring + j));
+		}
+
+		// Last ring to bottom pole
+		u32 last_ring = 1 + (latitude - 2) * longitude;
+		IndexArray_push(&mesh->edge_indices, (u16)(last_ring + j));
+		IndexArray_push(&mesh->edge_indices, (u16)(bottom_index));
+	}
+
+	// Latitude rings (horizontal circles)
+	for (u32 i = 1; i < latitude; ++i) {
+		u32 ring_start = 1 + (i - 1) * longitude;
+		for (u32 j = 0; j < longitude; ++j) {
+			u32 next = (j + 1) % longitude;
+            IndexArray_push(&mesh->edge_indices, (u16)(ring_start + j));
+            IndexArray_push(&mesh->edge_indices, (u16)(ring_start + next));
+		}
+	}
 }
 
 #endif /* MESH_H */

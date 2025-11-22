@@ -326,6 +326,8 @@ ReturnStatus Renderer_init_windowed(
     // Create meshes
     Mesh_create_cube(&renderer->meshes[MESH_TYPE_CUBE]);
     Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CUBE], renderer);
+    Mesh_create_sphere_uv(&renderer->meshes[MESH_TYPE_SPHERE], 16);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_SPHERE], renderer);
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry bind_group_layout_entries[] = {

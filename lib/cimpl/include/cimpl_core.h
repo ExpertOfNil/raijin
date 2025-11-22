@@ -3,10 +3,10 @@
 
 #include <memory.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stddef.h>
 #include <time.h>
 
 #ifndef LOG_LEVEL
@@ -62,8 +62,8 @@ typedef enum {
 #define DEFINE_DYNAMIC_ARRAY(type, name)                               \
     typedef struct name {                                              \
         type* items;                                                   \
-        size_t count;                                                  \
-        size_t capacity;                                               \
+        u32 count;                                                     \
+        u32 capacity;                                                  \
     } name;                                                            \
                                                                        \
     static inline void name##_init(name* arr) {                        \
@@ -133,9 +133,7 @@ typedef enum {
 
 inline static u32 randi(u32 index);
 const char* get_timestamp(void);
-void log_message(
-    const char* level_str, const char* format, va_list args
-);
+void log_message(const char* level_str, const char* format, va_list args);
 void log_trace(const char* format, ...);
 void log_debug(const char* format, ...);
 void log_info(const char* format, ...);
@@ -163,9 +161,7 @@ const char* get_timestamp(void) {
     return timestamp;
 }
 
-void log_message(
-    const char* level_str, const char* format, va_list args
-) {
+void log_message(const char* level_str, const char* format, va_list args) {
     printf("[%s] %s: ", get_timestamp(), level_str);
     vprintf(format, args);
     printf("\n");

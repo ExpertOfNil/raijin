@@ -113,4 +113,23 @@ void Raijin_draw_cube(
     Raijin_draw_cube_instance(engine, instance);
 }
 
+void Raijin_draw_sphere_uv_instance(Raijin* engine, Instance instance) {
+    DrawCommand cmd = {
+        .mesh_type = MESH_TYPE_SPHERE,
+        .instance = instance,
+    };
+    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+}
+
+void Raijin_draw_sphere_uv(
+    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+) {
+    Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
+    glm_mat4_identity(instance.model_matrix);
+    glm_mat4_ins3(rotation, instance.model_matrix);
+    glm_translate(instance.model_matrix, position);
+    glm_scale_uni(instance.model_matrix, scale);
+    Raijin_draw_sphere_uv_instance(engine, instance);
+}
+
 #endif /* RAIJIN_H */
