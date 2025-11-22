@@ -1072,13 +1072,54 @@ void Renderer_destroy(Renderer* renderer) {
 }
 
 void Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
+    // Avoid zero-size textures (minimized window)
+    if (width == 0 || height == 0) return;
+
     renderer->render_target.windowed.surface_config.width = width;
     renderer->render_target.windowed.surface_config.height = height;
     wgpuSurfaceConfigure(
         renderer->render_target.windowed.surface,
         &renderer->render_target.windowed.surface_config
     );
-    log_info("Surface configured successfully");
+
+    // Recreate depth texture
+    WGPUTextureFormat depth_texture_format = WGPUTextureFormat_Depth24Plus;
+    WGPUTextureDescriptor depth_texture_desc = {
+        .label = {"Depth Texture", WGPU_STRLEN},
+        .usage = WGPUTextureUsage_RenderAttachment,
+        .dimension = WGPUTextureDimension_2D,
+        .size = {width, height, 1},
+        .format = depth_texture_format,
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+        .viewFormats = &depth_texture_format,
+        .viewFormatCount = 1,
+    };
+
+    if (renderer->depth_texture != NULL) {
+        wgpuTextureRelease(renderer->depth_texture);
+    }
+    renderer->depth_texture =
+        wgpuDeviceCreateTexture(renderer->device, &depth_texture_desc);
+
+    if (renderer->depth_texture_view != NULL) {
+        wgpuTextureViewRelease(renderer->depth_texture_view);
+    }
+    WGPUTextureViewDescriptor depth_texture_view_desc = {
+        .label = {"Depth Texture View", WGPU_STRLEN},
+        .format = depth_texture_format,
+        .dimension = WGPUTextureViewDimension_2D,
+        .mipLevelCount = 1,
+        .baseMipLevel = 0,
+        .arrayLayerCount = 1,
+        .baseArrayLayer = 0,
+        .aspect = WGPUTextureAspect_DepthOnly,
+    };
+    renderer->depth_texture_view = wgpuTextureCreateView(
+        renderer->depth_texture, &depth_texture_view_desc
+    );
+
+    log_debug("Surface configured successfully");
     return;
 }
 

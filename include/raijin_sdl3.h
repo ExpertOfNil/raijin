@@ -90,6 +90,8 @@ void SdlWindow_handle_events(
                 window->width = event.window.data1;
                 window->height = event.window.data2;
                 Renderer_handle_resize(renderer, window->width, window->height);
+                cam->aspect = (f32)window->width / (f32)window->height;
+                glm_perspective_resize(cam->aspect, cam->proj_matrix);
             } break;
             case SDL_EVENT_KEY_DOWN: {
                 if (event.key.key == SDLK_ESCAPE) {
