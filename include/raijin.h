@@ -4,16 +4,14 @@
 #include <stdbool.h>
 
 #include "camera.h"
-#include "cglm/cam.h"
-#include "cglm/common.h"
-#include "cglm/io.h"
 #include "cglm/mat4.h"
+#include "cimpl_core.h"
 #include "core.h"
 #include "mesh.h"
 #include "renderer.h"
 #include "webgpu.h"
 
-#define CGLM_CONFIG_CLIP_CONTROL CGLM_CLIP_CONTROL_RH_ZO
+#define CGLM_FORCE_DEPTH_ZERO_TO_ONE
 
 // #ifdef RAIJIN_SDL3_IMPL
 #include "raijin_sdl3.h"
@@ -53,7 +51,7 @@ ReturnStatus Raijin_init(
     WGPUInstanceDescriptor instance_desc = {0};
     WGPUInstance instance = wgpuCreateInstance(&instance_desc);
     if (instance == NULL) {
-        LOG_ERROR("Failed to create WGPU instance");
+        log_error("Failed to create WGPU instance");
         return false;
     }
 
@@ -61,7 +59,7 @@ ReturnStatus Raijin_init(
     engine->renderer.render_target.windowed.surface =
         create_surface_sdl3(instance, engine->window.handle);
     if (engine->renderer.render_target.windowed.surface == NULL) {
-        LOG_ERROR("Failed to create surface");
+        log_error("Failed to create surface");
         return false;
     }
 

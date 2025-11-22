@@ -12,177 +12,27 @@
 #include <cglm/vec2.h>
 
 #include "webgpu.h"
+#include "cimpl_core.h"
+#include "cimpl_string.h"
 
 #define VEC_MAX_WRITE 64
 #define EPSILON 1e-9
 #define DEFAULT_ARRAY_CAPACITY 64
-#define DEG2RAD M_PI / 180.0f
-#define RAD2DEG 180.0f / M_PI
-
-#ifndef RAIJIN_REALLOC
-#include <stdlib.h>
-#define RAIJIN_REALLOC realloc
-#endif
-
-#ifndef RAIJIN_FREE
-#include <stdlib.h>
-#define RAIJIN_FREE free
-#endif
-
-#ifndef RAIJIN_ASSERT
-#include <assert.h>
-#define RAIJIN_ASSERT assert
-#endif
 
 #ifndef RAIJIN_ASSETS_DIR
 #define RAIJIN_ASSETS_DIR "assets"
-#endif
-
-#define DEFINE_DYNAMIC_ARRAY(type, name)                               \
-    typedef struct name {                                              \
-        type* items;                                                   \
-        size_t count;                                                  \
-        size_t capacity;                                               \
-    } name;                                                            \
-                                                                       \
-    static inline void name##_init(name* arr) {                        \
-        arr->items = NULL;                                             \
-        arr->count = 0;                                                \
-        arr->capacity = 0;                                             \
-    }                                                                  \
-                                                                       \
-    static inline void name##_reserve(name* arr, size_t cap) {         \
-        if ((cap) > (arr)->capacity) {                                 \
-            if ((arr)->capacity == 0) {                                \
-                (arr)->capacity = DEFAULT_ARRAY_CAPACITY;              \
-            }                                                          \
-            while ((cap) > (arr)->capacity) {                          \
-                (arr)->capacity *= 2;                                  \
-            }                                                          \
-            (arr)->items = RAIJIN_REALLOC(                             \
-                (arr)->items, (arr)->capacity * sizeof(*(arr)->items)  \
-            );                                                         \
-            RAIJIN_ASSERT(                                             \
-                (arr)->items != NULL && "ARRAY_RESERVE: Out of memory" \
-            );                                                         \
-        }                                                              \
-    }                                                                  \
-                                                                       \
-    static inline void name##_push(name* arr, type item) {             \
-        name##_reserve((arr), (arr)->count + 1);                       \
-        arr->items[arr->count++] = item;                               \
-    }                                                                  \
-                                                                       \
-    static inline void name##_push_many(                               \
-        name* arr, const type* new_items, u32 new_items_count          \
-    ) {                                                                \
-        name##_reserve((arr), (arr)->count + (new_items_count));       \
-        memcpy(                                                        \
-            (arr)->items + (arr)->count,                               \
-            (new_items),                                               \
-            (new_items_count) * sizeof(*(arr)->items)                  \
-        );                                                             \
-        (arr)->count += (new_items_count);                             \
-    }                                                                  \
-                                                                       \
-    static inline void name##_reset(name* arr) {                       \
-        memset(arr->items, 0, sizeof(name) * arr->count);              \
-        arr->count = 0;                                                \
-        arr->capacity = 0;                                             \
-    }                                                                  \
-                                                                       \
-    static inline void name##_free(name* arr) {                        \
-        if (arr->items) {                                              \
-            RAIJIN_FREE(arr->items);                                   \
-            arr->items = NULL;                                         \
-        }                                                              \
-        arr->count = 0;                                                \
-        arr->capacity = 0;                                             \
-    }
-
-#define ARRAY_COUNT(arr) (sizeof((arr)) / sizeof((arr)[0]))
-
-#ifndef LOG_VERBOSITY
-#define LOG_VERBOSITY LOG_LEVEL_TRACE
 #endif
 
 // Helper macro to get just the filename (not full path)
 #define __FILENAME__ \
     (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 
-// Base logging macro with timestamp, file, and line
-#define LOG(level, level_str, fmt, ...)                                        \
-    do {                                                                       \
-        if (LOG_VERBOSITY <= level) {                                          \
-            time_t now = time(NULL);                                           \
-            struct tm* tm_info = localtime(&now);                              \
-            char timestamp[64];                                                \
-            strftime(                                                          \
-                timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info     \
-            );                                                                 \
-            if ((level) == LOG_LEVEL_ERROR || (level) == LOG_LEVEL_CRITICAL) { \
-                fprintf(                                                       \
-                    stderr,                                                    \
-                    "[%s] [%s] %s:%d: " fmt "\n",                              \
-                    timestamp,                                                 \
-                    level_str,                                                 \
-                    __FILENAME__,                                              \
-                    __LINE__,                                                  \
-                    ##__VA_ARGS__                                              \
-                );                                                             \
-            } else {                                                           \
-                printf(                                                        \
-                    "[%s] [%s] %s:%d: " fmt "\n",                              \
-                    timestamp,                                                 \
-                    level_str,                                                 \
-                    __FILENAME__,                                              \
-                    __LINE__,                                                  \
-                    ##__VA_ARGS__                                              \
-                );                                                             \
-            }                                                                  \
-        }                                                                      \
-    } while (0)
-
-// Specific log level macros
-#define LOG_TRACE(fmt, ...) LOG(LOG_LEVEL_TRACE, "TRACE", fmt, ##__VA_ARGS__)
-#define LOG_DEBUG(fmt, ...) LOG(LOG_LEVEL_DEBUG, "DEBUG", fmt, ##__VA_ARGS__)
-#define LOG_INFO(fmt, ...) LOG(LOG_LEVEL_INFO, "INFO", fmt, ##__VA_ARGS__)
-#define LOG_WARN(fmt, ...) LOG(LOG_LEVEL_WARN, "WARN", fmt, ##__VA_ARGS__)
-#define LOG_ERROR(fmt, ...) LOG(LOG_LEVEL_ERROR, "ERROR", fmt, ##__VA_ARGS__)
-#define LOG_CRITICAL(fmt, ...) \
-    LOG(LOG_LEVEL_CRITICAL, "CRITICAL", fmt, ##__VA_ARGS__)
+DEFINE_DYNAMIC_ARRAY(char, CharArray)
 
 typedef enum {
     RETURN_SUCCESS,
     RETURN_FAILURE,
 } ReturnStatus;
-
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef size_t usize;
-
-typedef int8_t i8;
-typedef int16_t i16;
-typedef int32_t i32;
-typedef int64_t i64;
-typedef ssize_t isize;
-
-typedef float f32;
-typedef double f64;
-
-typedef enum LogLevel {
-    LOG_LEVEL_NONE,
-    LOG_LEVEL_TRACE,
-    LOG_LEVEL_DEBUG,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_ERROR,
-    LOG_LEVEL_CRITICAL,
-} LogLevel;
-
-DEFINE_DYNAMIC_ARRAY(char, CharArray)
 
 typedef struct MouseState {
     bool button_left;
@@ -199,7 +49,7 @@ WGPUBuffer create_buffer(
     const WGPUBufferUsage usage,
     const char* label
 );
-ReturnStatus load_shader(const char* path, CharArray* buffer);
+ReturnStatus load_shader(const char* path, String* buffer);
 
 /* Functions */
 
@@ -240,12 +90,12 @@ WGPUBuffer create_buffer(
  * @returns                 Return status
  */
 // TODO (mmckenna): add validation
-ReturnStatus load_shader(const char* path, CharArray* buffer) {
-    LOG_DEBUG("Loading shader from %s", path);
+ReturnStatus load_shader(const char* path, String* buffer) {
+    log_debug("Loading shader from %s", path);
     FILE* f = fopen(path, "rb");
     if (!f) {
-        LOG_ERROR("Failed to open file: %s", path);
-        return RETURN_FAILURE;
+        log_error("Failed to open file: %s", path);
+        return RETURN_SUCCESS;
     }
     if (fseek(f, 0, SEEK_END) != 0) {
         fprintf(stderr, "Failed to read file: %s", path);
@@ -254,29 +104,27 @@ ReturnStatus load_shader(const char* path, CharArray* buffer) {
 
     size_t file_size = ftell(f);
     if (file_size < 0) {
-        LOG_ERROR("Failed to get file size");
+        log_error("Failed to get file size");
         fclose(f);
         return RETURN_FAILURE;
     }
     rewind(f);
 
-    CharArray_reserve(buffer, file_size);
+    String_reserve(buffer, file_size);
     if (!buffer->items) {
-        LOG_ERROR("Failed to allocate memory for buffer");
-        CharArray_free(buffer);
+        log_error("Failed to allocate memory for buffer");
         fclose(f);
         return RETURN_FAILURE;
     }
 
     if (fread(buffer->items, 1, file_size, f) != file_size) {
-        LOG_ERROR("Failed to read file");
-        CharArray_free(buffer);
+        log_error("Failed to read file");
         fclose(f);
         return RETURN_FAILURE;
     }
     buffer->count += file_size;
     fclose(f);
-    LOG_DEBUG("Shader contents:\n%.*s", (int)buffer->count, buffer->items);
+    log_trace("Shader contents:\n%.*s", (int)buffer->count, buffer->items);
     return RETURN_SUCCESS;
 }
 

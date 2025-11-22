@@ -1,5 +1,4 @@
-#include "cglm/cglm.h"
-#include "cglm/mat4.h"
+#define CIMPL_IMPLEMENTATION
 #include "raijin.h"
 
 int main(void) {

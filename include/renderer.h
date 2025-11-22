@@ -207,7 +207,7 @@ ReturnStatus Renderer_init_windowed(
     if (!cb_ctx.success) {
         return RETURN_FAILURE;
     }
-    LOG_DEBUG("Adapter request successful");
+    log_debug("Adapter request successful");
 
     // Device request
     if (renderer->device != NULL) {
@@ -226,11 +226,11 @@ ReturnStatus Renderer_init_windowed(
         wgpuInstanceProcessEvents(instance);
     }
     if (!cb_ctx.success) {
-        LOG_ERROR("Device request error");
+        log_error("Device request error");
         wgpuAdapterRelease(renderer->adapter);
         return RETURN_FAILURE;
     }
-    LOG_DEBUG("Device request successful");
+    log_debug("Device request successful");
 
     // Get device queue
     renderer->queue = wgpuDeviceGetQueue(renderer->device);
@@ -243,10 +243,10 @@ ReturnStatus Renderer_init_windowed(
         &surface_caps
     );
     if (surface_caps.formatCount == 0) {
-        LOG_ERROR("No supported surface formats found");
+        log_error("No supported surface formats found");
         return RETURN_FAILURE;
     }
-    LOG_DEBUG("%ld surface formats found.", surface_caps.formatCount);
+    log_debug("%ld surface formats found.", surface_caps.formatCount);
     WGPUTextureFormat texture_format = surface_caps.formats[0];
     renderer->render_target.windowed.surface_config =
         (WGPUSurfaceConfiguration){
@@ -261,7 +261,7 @@ ReturnStatus Renderer_init_windowed(
         renderer->render_target.windowed.surface,
         &renderer->render_target.windowed.surface_config
     );
-    LOG_DEBUG(
+    log_debug(
         "Configured surface size: [%d, %d]",
         renderer->render_target.windowed.surface_config.width,
         renderer->render_target.windowed.surface_config.height
@@ -368,12 +368,12 @@ ReturnStatus Renderer_init_windowed(
         wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
 
     // Create solid render pipeline
-    CharArray default_shader_src = {0};
+    String default_shader_src = {0};
     ReturnStatus shader_load_status = load_shader(
         RAIJIN_ASSETS_DIR "/shaders/default_shader.wgsl", &default_shader_src
     );
     if (shader_load_status != RETURN_SUCCESS) {
-        LOG_ERROR("Failed to load shader");
+        log_error("Failed to load shader");
         // TODO (mmcknna) : what to do when shader loading fails?
     }
     WGPUShaderSourceWGSL wgsl_desc = {
@@ -495,7 +495,7 @@ ReturnStatus Renderer_init_windowed(
     renderer->edges_pipeline =
         wgpuDeviceCreateRenderPipeline(renderer->device, &edges_pipeline_desc);
 
-    CharArray_free(&default_shader_src);
+    String_free(&default_shader_src);
     return RETURN_SUCCESS;
 }
 
@@ -509,7 +509,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
     WGPUInstanceDescriptor instance_desc = {0};
     WGPUInstance instance = wgpuCreateInstance(&instance_desc);
     if (instance == NULL) {
-        LOG_ERROR("Failed to create WGPU instance");
+        log_error("Failed to create WGPU instance");
         return RETURN_FAILURE;
     }
 
@@ -682,12 +682,12 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
     wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
 
     // Create solid render pipeline
-    CharArray default_shader_src = {0};
+    String default_shader_src = {0};
     ReturnStatus shader_load_status = load_shader(
         RAIJIN_ASSETS_DIR "/shaders/default_shader.wgsl", &default_shader_src
     );
     if (shader_load_status != RETURN_SUCCESS) {
-        LOG_ERROR("Failed to load shader");
+        log_error("Failed to load shader");
         // TODO (mmcknna) : what to do when shader loading fails?
     }
     WGPUShaderSourceWGSL wgsl_desc = {
@@ -808,7 +808,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
     renderer->edges_pipeline =
         wgpuDeviceCreateRenderPipeline(renderer->device, &edges_pipeline_desc);
 
-    CharArray_free(&default_shader_src);
+    String_free(&default_shader_src);
     return RETURN_SUCCESS;
 }
 
@@ -998,7 +998,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             // TODO (mmckenna): Handle each status variant
             if (surface_texture.status !=
                 WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal) {
-                LOG_ERROR("Failed to get surface texture");
+                log_error("Failed to get surface texture");
                 // TODO (mmckenna) reconfigure surface and re-initialize depth
                 // texture
                 status = RETURN_FAILURE;
@@ -1015,7 +1015,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                 );
                 // TODO (mmckenna): Handle each status variant
                 if (present_status != WGPUStatus_Success) {
-                    LOG_ERROR("Failed to present surface");
+                    log_error("Failed to present surface");
                     status = RETURN_FAILURE;
                 }
             }
@@ -1025,7 +1025,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             }
         } break;
     }
-    DrawCommandArray_reset(&renderer->draw_commands);
+    DrawCommandArray_clear(&renderer->draw_commands);
     return status;
 }
 
@@ -1069,7 +1069,7 @@ void Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
         renderer->render_target.windowed.surface,
         &renderer->render_target.windowed.surface_config
     );
-    LOG_INFO("Surface configured successfully");
+    log_info("Surface configured successfully");
     return;
 }
 
@@ -1095,11 +1095,11 @@ static inline void adapter_request_callback(
     WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
     ctx->completed = true;
     if (status == WGPURequestAdapterStatus_Success) {
-        LOG_INFO("Adapter acquired successfully");
+        log_info("Adapter acquired successfully");
         ctx->success = true;
         *ctx->adapter = adapter;
     } else {
-        LOG_ERROR("Failed to acquire adapter: %.*s", (int)msg.length, msg.data);
+        log_error("Failed to acquire adapter: %.*s", (int)msg.length, msg.data);
         ctx->success = false;
     }
 }
@@ -1114,11 +1114,11 @@ static inline void device_request_callback(
     WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
     ctx->completed = true;
     if (status == WGPURequestDeviceStatus_Success) {
-        LOG_INFO("Device acquired successfully");
+        log_info("Device acquired successfully");
         ctx->success = true;
         *ctx->device = device;
     } else {
-        LOG_ERROR("Failed to acquire device: %.*s", (int)msg.length, msg.data);
+        log_error("Failed to acquire device: %.*s", (int)msg.length, msg.data);
         ctx->success = false;
     }
 }

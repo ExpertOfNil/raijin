@@ -6,6 +6,7 @@
 #include "cglm/vec3.h"
 #include "core.h"
 #include "webgpu.h"
+#include "cimpl_core.h"
 
 #define DEFAULT_INSTANCE_CAPACITY 256
 
@@ -238,7 +239,7 @@ void Mesh_realloc_instance_buffer(
         } else {
             mesh->instance_capacity *= 2;
         }
-        LOG_DEBUG("New instance capacity: %d", mesh->instance_capacity);
+        log_debug("New instance capacity: %d", mesh->instance_capacity);
     }
     mesh->instance_buffer = create_buffer(
         device,

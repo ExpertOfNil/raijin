@@ -8,7 +8,7 @@
 #include "cglm/quat.h"
 #include "cglm/util.h"
 #include "cglm/vec3.h"
-#include "core.h"
+#include "cimpl_core.h"
 
 typedef struct PanOrbitCamera {
     mat4 view_matrix;

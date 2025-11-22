@@ -45,14 +45,14 @@ ReturnStatus SdlWindow_init(
     SdlWindow* window, const char* title, int width, int height
 ) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
-        LOG_ERROR("SDL_Init: %s\n", SDL_GetError());
+        log_error("SDL_Init: %s\n", SDL_GetError());
         return false;
     }
 
     window->handle =
         SDL_CreateWindow(title, width, height, SDL_WINDOW_RESIZABLE);
     if (!window->handle) {
-        LOG_ERROR("SDL_CreateWindow: %s\n", SDL_GetError());
+        log_error("SDL_CreateWindow: %s\n", SDL_GetError());
         SDL_Quit();
         return false;
     }
@@ -61,7 +61,7 @@ ReturnStatus SdlWindow_init(
     window->height = height;
     window->should_close = false;
 
-    LOG_INFO("SDL window initialized successfully");
+    log_info("SDL window initialized successfully");
     return true;
 }
 
@@ -71,7 +71,7 @@ void SdlWindow_destroy(SdlWindow* window) {
         window->handle = NULL;
     }
     SDL_Quit();
-    LOG_INFO("Window destroyed");
+    log_info("Window destroyed");
 }
 
 void SdlWindow_handle_events(
