@@ -96,6 +96,10 @@ void SdlWindow_handle_events(
                     window->should_close = true;
                 }
             } break;
+            case SDL_EVENT_MOUSE_WHEEL: {
+                SDL_MouseWheelEvent* mouse_event = &event.wheel;
+                PanOrbitCamera_zoom(cam, mouse_event->y);
+            } break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN: {
                 SDL_MouseButtonEvent* mouse_event = &event.button;
                 if (mouse_event->button == SDL_BUTTON_LEFT) {
@@ -128,6 +132,8 @@ void SdlWindow_handle_events(
                 };
                 if (mouse->button_left) {
                     PanOrbitCamera_orbit(cam, delta);
+                } else if (mouse->button_right) {
+                    PanOrbitCamera_pan(cam, delta);
                 }
                 mouse->position[0] = mouse_motion->x;
                 mouse->position[1] = mouse_motion->y;

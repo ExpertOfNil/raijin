@@ -31,6 +31,8 @@ typedef struct PanOrbitCamera {
 
 void PanOrbitCamera_init(PanOrbitCamera* cam);
 void PanOrbitCamera_update(PanOrbitCamera* cam);
+void PanOrbitCamera_orbit(PanOrbitCamera* cam, vec2 mouse_delta);
+void PanOrbitCamera_pan(PanOrbitCamera* cam, vec2 mouse_delta);
 f32 PanOrbitCamera_get_focal_distance(const PanOrbitCamera* cam);
 void PanOrbitCamera_set_focal_distance(PanOrbitCamera* cam, f32 dist);
 
@@ -87,6 +89,26 @@ void PanOrbitCamera_orbit(PanOrbitCamera* cam, vec2 mouse_delta) {
     glm_quat_mul(yaw_q, pitch_q, q);
     glm_quat_mul(q, cam->orientation, cam->orientation);
     glm_quat_normalize(cam->orientation);
+    PanOrbitCamera_update(cam);
+}
+
+void PanOrbitCamera_pan(PanOrbitCamera* cam, vec2 mouse_delta) {
+    vec3 right, up;
+    glm_quat_rotatev(cam->orientation, GLM_XUP, right);
+    glm_quat_rotatev(cam->orientation, GLM_ZUP, up);
+
+    f32 scale = cam->pan_speed * cam->distance;
+
+    vec3 offset;
+    glm_vec3_scale(right, -mouse_delta[0] * scale, offset);
+    glm_vec3_muladds(up, mouse_delta[1] * scale, offset);
+
+    glm_vec3_add(cam->target, offset, cam->target);
+    PanOrbitCamera_update(cam);
+}
+
+void PanOrbitCamera_zoom(PanOrbitCamera* cam, f32 scroll) {
+    cam->distance -= scroll * cam->zoom_speed;
     PanOrbitCamera_update(cam);
 }
 
