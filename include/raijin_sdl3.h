@@ -126,7 +126,6 @@ void SdlWindow_handle_events(
                     mouse_motion->x - mouse->position[0],
                     mouse_motion->y - mouse->position[1],
                 };
-                LOG_DEBUG("Delta: [%9.3f, %9.3f]", delta[0], delta[1]);
                 if (mouse->button_left) {
                     PanOrbitCamera_orbit(cam, delta);
                 }

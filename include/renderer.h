@@ -127,7 +127,7 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         renderer->device,
         mesh->instance_capacity * sizeof(Instance),
         WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
-        "Index Buffer"
+        "Instance Buffer"
     );
 
     // Index buffer
@@ -151,15 +151,15 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         renderer->device,
         mesh->edge_instance_capacity * sizeof(Instance),
         WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
-        "Index Buffer"
+        "Edge Instance Buffer"
     );
 
-    // Index buffer
+    // Edge index buffer
     mesh->edge_index_buffer = create_buffer(
         renderer->device,
         mesh->edge_indices.count * sizeof(u16),
         WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
-        "Index Buffer"
+        "Edge Index Buffer"
     );
 
     wgpuQueueWriteBuffer(
