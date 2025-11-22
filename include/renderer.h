@@ -328,6 +328,8 @@ ReturnStatus Renderer_init_windowed(
     Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CUBE], renderer);
     Mesh_create_sphere_uv(&renderer->meshes[MESH_TYPE_SPHERE], 16);
     Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_SPHERE], renderer);
+    Mesh_create_disc(&renderer->meshes[MESH_TYPE_DISC], 32);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_DISC], renderer);
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry bind_group_layout_entries[] = {
@@ -445,7 +447,7 @@ ReturnStatus Renderer_init_windowed(
             (WGPUPrimitiveState){
                 .topology = WGPUPrimitiveTopology_TriangleList,
                 .frontFace = WGPUFrontFace_CCW,
-                .cullMode = WGPUCullMode_Back,
+                .cullMode = WGPUCullMode_None,
                 .unclippedDepth = false,
             },
         .multisample = (WGPUMultisampleState){
@@ -930,6 +932,11 @@ void Renderer_render_pass_solid(
             case MESH_TYPE_SPHERE: {
                 Renderer_render_mesh(
                     renderer, MESH_TYPE_SPHERE, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_DISC: {
+                Renderer_render_mesh(
+                    renderer, MESH_TYPE_DISC, render_pass_encoder
                 );
             } break;
         }
