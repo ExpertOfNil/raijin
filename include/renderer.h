@@ -468,6 +468,7 @@ ReturnStatus Renderer_init_windowed(
         .module = default_shader,
         .entryPoint = {"edges_fs_main", WGPU_STRLEN},
         .targets = &color_target_state,
+        .targetCount = 1,
     };
     WGPUPipelineLayoutDescriptor edges_pipeline_layout_desc = {
         .label = {"Edges Pipeline Layout", WGPU_STRLEN},
@@ -781,6 +782,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
         .module = default_shader,
         .entryPoint = {"edges_fs_main", WGPU_STRLEN},
         .targets = &color_target_state,
+        .targetCount = 1,
     };
     WGPUPipelineLayoutDescriptor edges_pipeline_layout_desc = {
         .label = {"Edges Pipeline Layout", WGPU_STRLEN},
@@ -878,6 +880,67 @@ void Renderer_render_mesh(
     InstanceArray_free(&instances);
 }
 
+// TODO (mmckenna): Target for arena allocator
+void Renderer_render_mesh_edges(
+    Renderer* renderer,
+    const MeshType mesh_type,
+    const WGPURenderPassEncoder render_pass_encoder
+) {
+    InstanceArray instances;
+    InstanceArray_init(&instances);
+    for (u32 i = 0; i < renderer->draw_commands.count; ++i) {
+        DrawCommand* cmd = &renderer->draw_commands.items[i];
+        if (cmd->mesh_type == mesh_type) {
+            Instance instance = {0};
+            memcpy(&instance, &cmd->instance, sizeof(instance));
+            glm_vec4_one(instance.color);
+            InstanceArray_push(&instances, instance);
+        }
+    }
+
+    // No instances to render
+    if (instances.count == 0) {
+        return;
+    }
+
+    Mesh* mesh = &renderer->meshes[mesh_type];
+    if (instances.count > mesh->edge_instance_capacity) {
+        Mesh_realloc_edge_instance_buffer(mesh, renderer->device, instances.count);
+    }
+    wgpuQueueWriteBuffer(
+        renderer->queue,
+        mesh->edge_instance_buffer,
+        0,
+        instances.items,
+        instances.count * sizeof(Instance)
+    );
+    wgpuRenderPassEncoderSetVertexBuffer(
+        render_pass_encoder,
+        0,
+        mesh->vertex_buffer,
+        0,
+        mesh->vertices.count * sizeof(Vertex)
+    );
+    wgpuRenderPassEncoderSetVertexBuffer(
+        render_pass_encoder,
+        1,
+        mesh->edge_instance_buffer,
+        0,
+        instances.count * sizeof(Instance)
+    );
+    wgpuRenderPassEncoderSetIndexBuffer(
+        render_pass_encoder,
+        mesh->edge_index_buffer,
+        WGPUIndexFormat_Uint16,
+        0,
+        mesh->edge_indices.count * sizeof(u16)
+    );
+    wgpuRenderPassEncoderDrawIndexed(
+        render_pass_encoder, mesh->edge_indices.count, instances.count, 0, 0, 0
+    );
+    InstanceArray_free(&instances);
+}
+
 void Renderer_render_pass_solid(
     Renderer* renderer,
     const WGPUCommandEncoder command_encoder,
@@ -960,6 +1023,88 @@ void Renderer_render_pass_solid(
     return;
 }
 
+void Renderer_render_pass_edges(
+    Renderer* renderer,
+    const WGPUCommandEncoder command_encoder,
+    const WGPUTextureView texture_view
+) {
+    WGPURenderPassColorAttachment color_attachment = {
+        .view = texture_view,
+        .loadOp = WGPULoadOp_Load,
+        .clearValue =
+            (WGPUColor){
+                .r = 0.01,
+                .g = 0.01,
+                .b = 0.01,
+                .a = 1.0,
+            },
+        .storeOp = WGPUStoreOp_Store,
+    };
+    WGPURenderPassDepthStencilAttachment depth_stencil_attachment = {
+        .view = renderer->depth_texture_view,
+        .depthLoadOp = WGPULoadOp_Load,
+        .depthClearValue = 1.0,
+        .depthStoreOp = WGPUStoreOp_Store,
+    };
+    WGPURenderPassDescriptor render_pass_desc = {
+        .label = {"Edges Render Pass", WGPU_STRLEN},
+        .colorAttachments = &color_attachment,
+        .colorAttachmentCount = 1,
+        .depthStencilAttachment = &depth_stencil_attachment,
+    };
+    WGPURenderPassEncoder render_pass_encoder =
+        wgpuCommandEncoderBeginRenderPass(command_encoder, &render_pass_desc);
+    wgpuRenderPassEncoderSetPipeline(
+        render_pass_encoder, renderer->edges_pipeline
+    );
+    wgpuRenderPassEncoderSetBindGroup(
+        render_pass_encoder, 0, renderer->uniform_bind_group, 0, NULL
+    );
+    // TODO (mmckenna) : render mesh instances
+    for (u32 i = 0; i < MESH_TYPE_COUNT; ++i) {
+        switch (i) {
+            case MESH_TYPE_TRIANGLE: {
+                Renderer_render_mesh_edges(
+                    renderer, MESH_TYPE_TRIANGLE, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_CUBE: {
+                Renderer_render_mesh_edges(
+                    renderer, MESH_TYPE_CUBE, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_TETRAHEDRON: {
+                Renderer_render_mesh_edges(
+                    renderer, MESH_TYPE_TETRAHEDRON, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_SPHERE: {
+                Renderer_render_mesh_edges(
+                    renderer, MESH_TYPE_SPHERE, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_DISC: {
+                Renderer_render_mesh_edges(
+                    renderer, MESH_TYPE_DISC, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_CYLINDER: {
+                Renderer_render_mesh_edges(
+                    renderer, MESH_TYPE_CYLINDER, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_CONE: {
+                Renderer_render_mesh_edges(
+                    renderer, MESH_TYPE_CONE, render_pass_encoder
+                );
+            } break;
+        }
+    }
+    wgpuRenderPassEncoderEnd(render_pass_encoder);
+    wgpuRenderPassEncoderRelease(render_pass_encoder);
+    return;
+}
+
 void Renderer_render_to_view(
     Renderer* renderer, const WGPUTextureView texture_view
 ) {
@@ -971,7 +1116,9 @@ void Renderer_render_to_view(
         wgpuDeviceCreateCommandEncoder(renderer->device, &command_encoder_desc);
 
     Renderer_render_pass_solid(renderer, command_encoder, texture_view);
-    // TODO (mmckenna) : Outline render pass
+    if (renderer->enable_edges) {
+        Renderer_render_pass_edges(renderer, command_encoder, texture_view);
+    }
 
     WGPUCommandBufferDescriptor command_buffer_desc = {
         .label = {"Command Buffer", WGPU_STRLEN}

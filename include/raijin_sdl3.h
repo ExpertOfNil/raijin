@@ -97,6 +97,9 @@ void SdlWindow_handle_events(
                 if (event.key.key == SDLK_ESCAPE) {
                     window->should_close = true;
                 }
+                if (event.key.key == SDLK_TAB) {
+                    renderer->enable_edges ^= true;
+                }
             } break;
             case SDL_EVENT_MOUSE_WHEEL: {
                 SDL_MouseWheelEvent* mouse_event = &event.wheel;

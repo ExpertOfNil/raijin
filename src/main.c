@@ -40,12 +40,14 @@ int main(void) {
     );
     glm_scale_uni(disc_instance.model_matrix, 0.5f);
 
+    f32 line_r = 0.05f;
+    f32 cone_r = line_r * 1.5f;
     Instance x_axis;
     Instance_from_line(
         &x_axis,
         (vec3){0.0f, 0.0f, 0.0f},
         (vec3){4.0f, 0.0f, 0.0f},
-        0.05f,
+        line_r,
         (vec4){1.0f, 0.0f, 0.0f, 1.0f}
     );
     Instance x_axis_tip;
@@ -53,7 +55,7 @@ int main(void) {
         &x_axis_tip,
         (vec3){4.0f, 0.0f, 0.0f},
         (vec3){4.5f, 0.0f, 0.0f},
-        0.1f,
+        cone_r,
         (vec4){1.0f, 0.0f, 0.0f, 1.0f}
     );
     Instance y_axis;
@@ -61,7 +63,7 @@ int main(void) {
         &y_axis,
         (vec3){0.0f, 0.0f, 0.0f},
         (vec3){0.0f, 4.0f, 0.0f},
-        0.05f,
+        line_r,
         (vec4){0.0f, 1.0f, 0.0f, 1.0f}
     );
     Instance y_axis_tip;
@@ -69,7 +71,7 @@ int main(void) {
         &y_axis_tip,
         (vec3){0.0f, 4.0f, 0.0f},
         (vec3){0.0f, 4.5f, 0.0f},
-        0.1f,
+        cone_r,
         (vec4){0.0f, 1.0f, 0.0f, 1.0f}
     );
     Instance z_axis;
@@ -77,7 +79,7 @@ int main(void) {
         &z_axis,
         (vec3){0.0f, 0.0f, 0.0f},
         (vec3){0.0f, 0.0f, 4.0f},
-        0.05f,
+        line_r,
         (vec4){0.0f, 0.0f, 1.0f, 1.0f}
     );
     Instance z_axis_tip;
@@ -85,7 +87,7 @@ int main(void) {
         &z_axis_tip,
         (vec3){0.0f, 0.0f, 4.0f},
         (vec3){0.0f, 0.0f, 4.5f},
-        0.1f,
+        cone_r,
         (vec4){0.0f, 0.0f, 1.0f, 1.0f}
     );
 

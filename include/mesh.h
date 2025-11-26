@@ -268,7 +268,8 @@ void Instance_from_line(
         );
     }
 
-    // Manually build the matrix: scale the rotation matrix, then set translation
+    // Manually build the matrix: scale the rotation matrix, then set
+    // translation
     glm_vec4_scale(rotation[0], radius, instance->model_matrix[0]);
     glm_vec4_scale(rotation[1], length, instance->model_matrix[1]);
     glm_vec4_scale(rotation[2], radius, instance->model_matrix[2]);
@@ -303,13 +304,18 @@ void Mesh_realloc_instance_buffer(
 void Mesh_realloc_edge_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 ) {
-    while (mesh->instance_capacity < new_capacity) {
-        mesh->instance_capacity *= 2;
+    while (mesh->edge_instance_capacity < new_capacity) {
+        if (mesh->edge_instance_capacity == 0) {
+            mesh->edge_instance_capacity = DEFAULT_INSTANCE_CAPACITY;
+        } else {
+            mesh->edge_instance_capacity *= 2;
+        }
+        log_debug("New edge instance capacity: %d", mesh->instance_capacity);
     }
-    mesh->instance_buffer = create_buffer(
+    mesh->edge_instance_buffer = create_buffer(
         device,
-        mesh->instance_capacity * sizeof(Instance),
-        WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
+        mesh->edge_instance_capacity * sizeof(Instance),
+        WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst,
         "Mesh Edge Instance Buffer"
     );
 }
@@ -494,7 +500,7 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     u32 n_vertices = divisions * 2 + 2;
     // indices: divisions * 6 (sides) + divisions * 3 * 2 (two caps)
     u32 n_indices = divisions * 6 + divisions * 6;
-    u32 n_edge_indices = divisions * 4;
+    u32 n_edge_indices = divisions * 4 + (divisions / 4) * 2;
     VertexArray_reserve(&mesh->vertices, n_vertices);
     IndexArray_reserve(&mesh->indices, n_indices);
     IndexArray_reserve(&mesh->edge_indices, n_edge_indices);
@@ -517,7 +523,8 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     }
     // Add center vertices for caps
     u16 bottom_center = (u16)mesh->vertices.count;
-    Vertex* bottom_center_vertex = &mesh->vertices.items[mesh->vertices.count++];
+    Vertex* bottom_center_vertex =
+        &mesh->vertices.items[mesh->vertices.count++];
     glm_vec3_copy((vec3){0.0f, 0.0f, 0.0f}, bottom_center_vertex->position);
     glm_vec3_copy((vec3){0.0f, -1.0f, 0.0f}, bottom_center_vertex->normal);
     u16 top_center = (u16)mesh->vertices.count;
@@ -560,7 +567,11 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
         IndexArray_push(&mesh->indices, top_current);
         IndexArray_push(&mesh->indices, top_next);
     }
-    // Generate edge indices (unchanged)
+
+    // Generate edge indices
+
+    // This variant does not include lengthwise lines
+    /*
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
         u16 bottom_current = (u16)(i * 2);
@@ -574,6 +585,28 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
         IndexArray_push(&mesh->edge_indices, top_current);
         IndexArray_push(&mesh->edge_indices, top_next);
     }
+    */
+
+    // This variant includes lengthwise lines
+    for (u32 i = 0; i < divisions; ++i) {
+        u32 next = (i + 1) % divisions;
+        u16 bottom_current = (u16)(i * 2);
+        u16 top_current = (u16)(i * 2 + 1);
+        u16 bottom_next = (u16)(next * 2);
+        u16 top_next = (u16)(next * 2 + 1);
+        // Bottom ring
+        IndexArray_push(&mesh->edge_indices, bottom_current);
+        IndexArray_push(&mesh->edge_indices, bottom_next);
+        // Top ring
+        IndexArray_push(&mesh->edge_indices, top_current);
+        IndexArray_push(&mesh->edge_indices, top_next);
+
+        // ADD THIS: Vertical lines (only every few divisions to avoid clutter)
+        if (i % (divisions / 4) == 0) {
+            IndexArray_push(&mesh->edge_indices, bottom_current);
+            IndexArray_push(&mesh->edge_indices, top_current);
+        }
+    }
 }
 
 void Mesh_create_cone(Mesh* mesh, u32 divisions) {
@@ -583,7 +616,7 @@ void Mesh_create_cone(Mesh* mesh, u32 divisions) {
     u32 n_vertices = divisions + 2;
     // indices: divisions * 3 (side triangles) + divisions * 3 (base cap)
     u32 n_indices = divisions * 6;
-    u32 n_edge_indices = divisions * 3; // base ring + edges to tip
+    u32 n_edge_indices = divisions * 3;  // base ring + edges to tip
     VertexArray_reserve(&mesh->vertices, n_vertices);
     IndexArray_reserve(&mesh->indices, n_indices);
     IndexArray_reserve(&mesh->edge_indices, n_edge_indices);
