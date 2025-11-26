@@ -1,4 +1,6 @@
 #define CIMPL_IMPLEMENTATION
+#include "cimpl_glm.h"
+#include "mesh.h"
 #include "raijin.h"
 
 int main(void) {
@@ -33,16 +35,73 @@ int main(void) {
     };
     glm_mat4_identity(disc_instance.model_matrix);
     glm_translate(disc_instance.model_matrix, (vec3){0.0f, 0.0f, 0.0f});
-    glm_rotate_x(disc_instance.model_matrix, PI * 0.5f, disc_instance.model_matrix);
+    glm_rotate_x(
+        disc_instance.model_matrix, PI * 0.5f, disc_instance.model_matrix
+    );
     glm_scale_uni(disc_instance.model_matrix, 0.5f);
+
+    Instance x_axis;
+    Instance_from_line(
+        &x_axis,
+        (vec3){0.0f, 0.0f, 0.0f},
+        (vec3){4.0f, 0.0f, 0.0f},
+        0.05f,
+        (vec4){1.0f, 0.0f, 0.0f, 1.0f}
+    );
+    Instance x_axis_tip;
+    Instance_from_line(
+        &x_axis_tip,
+        (vec3){4.0f, 0.0f, 0.0f},
+        (vec3){4.5f, 0.0f, 0.0f},
+        0.1f,
+        (vec4){1.0f, 0.0f, 0.0f, 1.0f}
+    );
+    Instance y_axis;
+    Instance_from_line(
+        &y_axis,
+        (vec3){0.0f, 0.0f, 0.0f},
+        (vec3){0.0f, 4.0f, 0.0f},
+        0.05f,
+        (vec4){0.0f, 1.0f, 0.0f, 1.0f}
+    );
+    Instance y_axis_tip;
+    Instance_from_line(
+        &y_axis_tip,
+        (vec3){0.0f, 4.0f, 0.0f},
+        (vec3){0.0f, 4.5f, 0.0f},
+        0.1f,
+        (vec4){0.0f, 1.0f, 0.0f, 1.0f}
+    );
+    Instance z_axis;
+    Instance_from_line(
+        &z_axis,
+        (vec3){0.0f, 0.0f, 0.0f},
+        (vec3){0.0f, 0.0f, 4.0f},
+        0.05f,
+        (vec4){0.0f, 0.0f, 1.0f, 1.0f}
+    );
+    Instance z_axis_tip;
+    Instance_from_line(
+        &z_axis_tip,
+        (vec3){0.0f, 0.0f, 4.0f},
+        (vec3){0.0f, 0.0f, 4.5f},
+        0.1f,
+        (vec4){0.0f, 0.0f, 1.0f, 1.0f}
+    );
 
     while (!engine.window.should_close) {
         Raijin_handle_events(&engine);
         Raijin_draw_disc_instance(&engine, disc_instance);
         Raijin_draw_sphere_uv_instance(&engine, sphere_instance);
-        for (u32 i = 0; i < 3; ++i) {
-            Raijin_draw_cube_instance(&engine, cube_instances[i]);
-        }
+        Raijin_draw_cylinder_instance(&engine, x_axis);
+        Raijin_draw_cone_instance(&engine, x_axis_tip);
+        Raijin_draw_cylinder_instance(&engine, y_axis);
+        Raijin_draw_cone_instance(&engine, y_axis_tip);
+        Raijin_draw_cylinder_instance(&engine, z_axis);
+        Raijin_draw_cone_instance(&engine, z_axis_tip);
+        //for (u32 i = 0; i < 3; ++i) {
+        //    Raijin_draw_cube_instance(&engine, cube_instances[i]);
+        //}
         Raijin_render(&engine);
     }
 }

@@ -32,6 +32,22 @@ void Raijin_handle_events(Raijin* engine);
 void Raijin_draw_cube(
     Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
 );
+void Raijin_draw_sphere_uv_instance(Raijin* engine, Instance instance);
+void Raijin_draw_sphere_uv(
+    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+);
+void Raijin_draw_disc_instance(Raijin* engine, Instance instance);
+void Raijin_draw_disc(
+    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+);
+void Raijin_draw_cylinder_instance(Raijin* engine, Instance instance);
+void Raijin_draw_cylinder(
+    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+);
+void Raijin_draw_cone_instance(Raijin* engine, Instance instance);
+void Raijin_draw_cone(
+    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+);
 void Raijin_destroy(Raijin* engine);
 
 /* Function */
@@ -149,6 +165,44 @@ void Raijin_draw_disc(
     glm_translate(instance.model_matrix, position);
     glm_scale_uni(instance.model_matrix, scale);
     Raijin_draw_disc_instance(engine, instance);
+}
+
+void Raijin_draw_cylinder_instance(Raijin* engine, Instance instance) {
+    DrawCommand cmd = {
+        .mesh_type = MESH_TYPE_CYLINDER,
+        .instance = instance,
+    };
+    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+}
+
+void Raijin_draw_cylinder(
+    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+) {
+    Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
+    glm_mat4_identity(instance.model_matrix);
+    glm_mat4_ins3(rotation, instance.model_matrix);
+    glm_translate(instance.model_matrix, position);
+    glm_scale_uni(instance.model_matrix, scale);
+    Raijin_draw_cylinder_instance(engine, instance);
+}
+
+void Raijin_draw_cone_instance(Raijin* engine, Instance instance) {
+    DrawCommand cmd = {
+        .mesh_type = MESH_TYPE_CONE,
+        .instance = instance,
+    };
+    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+}
+
+void Raijin_draw_cone(
+    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+) {
+    Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
+    glm_mat4_identity(instance.model_matrix);
+    glm_mat4_ins3(rotation, instance.model_matrix);
+    glm_translate(instance.model_matrix, position);
+    glm_scale_uni(instance.model_matrix, scale);
+    Raijin_draw_cone_instance(engine, instance);
 }
 
 #endif /* RAIJIN_H */

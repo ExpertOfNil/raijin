@@ -330,6 +330,10 @@ ReturnStatus Renderer_init_windowed(
     Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_SPHERE], renderer);
     Mesh_create_disc(&renderer->meshes[MESH_TYPE_DISC], 32);
     Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_DISC], renderer);
+    Mesh_create_cylinder(&renderer->meshes[MESH_TYPE_CYLINDER], 16);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CYLINDER], renderer);
+    Mesh_create_cone(&renderer->meshes[MESH_TYPE_CONE], 16);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CONE], renderer);
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry bind_group_layout_entries[] = {
@@ -937,6 +941,16 @@ void Renderer_render_pass_solid(
             case MESH_TYPE_DISC: {
                 Renderer_render_mesh(
                     renderer, MESH_TYPE_DISC, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_CYLINDER: {
+                Renderer_render_mesh(
+                    renderer, MESH_TYPE_CYLINDER, render_pass_encoder
+                );
+            } break;
+            case MESH_TYPE_CONE: {
+                Renderer_render_mesh(
+                    renderer, MESH_TYPE_CONE, render_pass_encoder
                 );
             } break;
         }

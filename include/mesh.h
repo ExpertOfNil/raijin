@@ -34,6 +34,8 @@ typedef enum {
     MESH_TYPE_TETRAHEDRON,
     MESH_TYPE_SPHERE,
     MESH_TYPE_DISC,
+    MESH_TYPE_CYLINDER,
+    MESH_TYPE_CONE,
     MESH_TYPE_COUNT,
 } MeshType;
 
@@ -57,6 +59,9 @@ void Instance_set_position(Instance* instance, vec3 position);
 void Instance_from_position_rotation(
     Instance* instance, vec3 position, mat3 rotation, f32 scale, vec4 color
 );
+void Instance_from_line(
+    Instance* instance, vec3 start, vec3 end, f32 radius, vec4 color
+);
 void Mesh_realloc_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 );
@@ -66,6 +71,8 @@ void Mesh_realloc_edge_instance_buffer(
 void Mesh_create_cube(Mesh* mesh);
 void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions);
 void Mesh_create_disc(Mesh* mesh, u32 divisions);
+void Mesh_create_cylinder(Mesh* mesh, u32 divisions);
+void Mesh_create_cone(Mesh* mesh, u32 divisions);
 
 /* Static Definitions */
 
@@ -231,6 +238,46 @@ void Instance_from_position_rotation(
     glm_mat4_ins3(rotation, instance->model_matrix);
     glm_mat4_scale(instance->model_matrix, scale);
     glm_translate(instance->model_matrix, position);
+    glm_vec4_copy(color, instance->color);
+}
+
+// Helper to create instance transform for a cylinder between two points
+void Instance_from_line(
+    Instance* instance, vec3 start, vec3 end, f32 radius, vec4 color
+) {
+    vec3 axis;
+    glm_vec3_sub(end, start, axis);
+    f32 length = glm_vec3_norm(axis);
+    glm_vec3_normalize(axis);
+
+    // Create quaternion that rotates Y-axis to align with our axis
+    vec3 up = {0.0f, 1.0f, 0.0f};
+    vec4 quat;
+    glm_quat_from_vecs(up, axis, quat);
+
+    // Convert quaternion to rotation matrix
+    mat4 rotation;
+    glm_quat_mat4(quat, rotation);
+    for (int i = 0; i < 4; i++) {
+        log_debug(
+            "  [%f, %f, %f, %f]",
+            rotation[i][0],
+            rotation[i][1],
+            rotation[i][2],
+            rotation[i][3]
+        );
+    }
+
+    // Manually build the matrix: scale the rotation matrix, then set translation
+    glm_vec4_scale(rotation[0], radius, instance->model_matrix[0]);
+    glm_vec4_scale(rotation[1], length, instance->model_matrix[1]);
+    glm_vec4_scale(rotation[2], radius, instance->model_matrix[2]);
+    // Set translation directly in 4th column
+    instance->model_matrix[3][0] = start[0];
+    instance->model_matrix[3][1] = start[1];
+    instance->model_matrix[3][2] = start[2];
+    instance->model_matrix[3][3] = 1.0f;
+
     glm_vec4_copy(color, instance->color);
 }
 
@@ -436,6 +483,165 @@ void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
             u32 next = (j + 1) % longitude;
             IndexArray_push(&mesh->edge_indices, (u16)(ring_start + j));
             IndexArray_push(&mesh->edge_indices, (u16)(ring_start + next));
+        }
+    }
+}
+
+void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
+    f32 radius = 1.0f;
+    f32 height = 1.0f;
+    // vertices: divisions * 2 (sides) + 2 (cap centers)
+    u32 n_vertices = divisions * 2 + 2;
+    // indices: divisions * 6 (sides) + divisions * 3 * 2 (two caps)
+    u32 n_indices = divisions * 6 + divisions * 6;
+    u32 n_edge_indices = divisions * 4;
+    VertexArray_reserve(&mesh->vertices, n_vertices);
+    IndexArray_reserve(&mesh->indices, n_indices);
+    IndexArray_reserve(&mesh->edge_indices, n_edge_indices);
+    f32 theta = 2.0f * PI / divisions;
+    // Generate side vertices
+    for (u32 i = 0; i < divisions; ++i) {
+        f32 angle = (f32)i * theta;
+        f32 x = radius * cosf(angle);
+        f32 z = radius * sinf(angle);
+        // Bottom vertex (at y=0)
+        Vertex* bottom_vertex = &mesh->vertices.items[mesh->vertices.count++];
+        glm_vec3_copy((vec3){x, 0.0f, z}, bottom_vertex->position);
+        vec3 normal = {x, 0.0f, z};
+        glm_vec3_normalize(normal);
+        glm_vec3_copy(normal, bottom_vertex->normal);
+        // Top vertex (at y=height)
+        Vertex* top_vertex = &mesh->vertices.items[mesh->vertices.count++];
+        glm_vec3_copy((vec3){x, height, z}, top_vertex->position);
+        glm_vec3_copy(normal, top_vertex->normal);
+    }
+    // Add center vertices for caps
+    u16 bottom_center = (u16)mesh->vertices.count;
+    Vertex* bottom_center_vertex = &mesh->vertices.items[mesh->vertices.count++];
+    glm_vec3_copy((vec3){0.0f, 0.0f, 0.0f}, bottom_center_vertex->position);
+    glm_vec3_copy((vec3){0.0f, -1.0f, 0.0f}, bottom_center_vertex->normal);
+    u16 top_center = (u16)mesh->vertices.count;
+    Vertex* top_center_vertex = &mesh->vertices.items[mesh->vertices.count++];
+    glm_vec3_copy((vec3){0.0f, height, 0.0f}, top_center_vertex->position);
+    glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, top_center_vertex->normal);
+    // Generate indices for side faces
+    for (u32 i = 0; i < divisions; ++i) {
+        u32 next = (i + 1) % divisions;
+        u16 bottom_current = (u16)(i * 2);
+        u16 top_current = (u16)(i * 2 + 1);
+        u16 bottom_next = (u16)(next * 2);
+        u16 top_next = (u16)(next * 2 + 1);
+        // First triangle
+        IndexArray_push(&mesh->indices, bottom_current);
+        IndexArray_push(&mesh->indices, top_current);
+        IndexArray_push(&mesh->indices, bottom_next);
+        // Second triangle
+        IndexArray_push(&mesh->indices, bottom_next);
+        IndexArray_push(&mesh->indices, top_current);
+        IndexArray_push(&mesh->indices, top_next);
+    }
+    // Generate indices for bottom cap (winding order matters for culling)
+    for (u32 i = 0; i < divisions; ++i) {
+        u32 next = (i + 1) % divisions;
+        u16 bottom_current = (u16)(i * 2);
+        u16 bottom_next = (u16)(next * 2);
+
+        IndexArray_push(&mesh->indices, bottom_center);
+        IndexArray_push(&mesh->indices, bottom_next);
+        IndexArray_push(&mesh->indices, bottom_current);
+    }
+    // Generate indices for top cap
+    for (u32 i = 0; i < divisions; ++i) {
+        u32 next = (i + 1) % divisions;
+        u16 top_current = (u16)(i * 2 + 1);
+        u16 top_next = (u16)(next * 2 + 1);
+
+        IndexArray_push(&mesh->indices, top_center);
+        IndexArray_push(&mesh->indices, top_current);
+        IndexArray_push(&mesh->indices, top_next);
+    }
+    // Generate edge indices (unchanged)
+    for (u32 i = 0; i < divisions; ++i) {
+        u32 next = (i + 1) % divisions;
+        u16 bottom_current = (u16)(i * 2);
+        u16 top_current = (u16)(i * 2 + 1);
+        u16 bottom_next = (u16)(next * 2);
+        u16 top_next = (u16)(next * 2 + 1);
+        // Bottom ring
+        IndexArray_push(&mesh->edge_indices, bottom_current);
+        IndexArray_push(&mesh->edge_indices, bottom_next);
+        // Top ring
+        IndexArray_push(&mesh->edge_indices, top_current);
+        IndexArray_push(&mesh->edge_indices, top_next);
+    }
+}
+
+void Mesh_create_cone(Mesh* mesh, u32 divisions) {
+    f32 radius = 1.0f;
+    f32 height = 1.0f;
+    // vertices: divisions (base ring) + 1 (tip) + 1 (base center)
+    u32 n_vertices = divisions + 2;
+    // indices: divisions * 3 (side triangles) + divisions * 3 (base cap)
+    u32 n_indices = divisions * 6;
+    u32 n_edge_indices = divisions * 3; // base ring + edges to tip
+    VertexArray_reserve(&mesh->vertices, n_vertices);
+    IndexArray_reserve(&mesh->indices, n_indices);
+    IndexArray_reserve(&mesh->edge_indices, n_edge_indices);
+    f32 theta = 2.0f * PI / divisions;
+    // Generate base ring vertices
+    for (u32 i = 0; i < divisions; ++i) {
+        f32 angle = (f32)i * theta;
+        f32 x = radius * cosf(angle);
+        f32 z = radius * sinf(angle);
+        Vertex* base_vertex = &mesh->vertices.items[mesh->vertices.count++];
+        glm_vec3_copy((vec3){x, 0.0f, z}, base_vertex->position);
+
+        // Normal for cone side - points outward and up
+        // Slant height calculation for proper normal
+        f32 slant = sqrtf(radius * radius + height * height);
+        vec3 normal = {x * height / slant, radius / slant, z * height / slant};
+        glm_vec3_normalize(normal);
+        glm_vec3_copy(normal, base_vertex->normal);
+    }
+    // Add tip vertex
+    u16 tip_index = (u16)mesh->vertices.count;
+    Vertex* tip_vertex = &mesh->vertices.items[mesh->vertices.count++];
+    glm_vec3_copy((vec3){0.0f, height, 0.0f}, tip_vertex->position);
+    // Tip normal - average of all side normals (points up and out)
+    glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, tip_vertex->normal);
+    // Add base center vertex
+    u16 base_center = (u16)mesh->vertices.count;
+    Vertex* base_center_vertex = &mesh->vertices.items[mesh->vertices.count++];
+    glm_vec3_copy((vec3){0.0f, 0.0f, 0.0f}, base_center_vertex->position);
+    glm_vec3_copy((vec3){0.0f, -1.0f, 0.0f}, base_center_vertex->normal);
+    // Generate indices for side triangles
+    for (u32 i = 0; i < divisions; ++i) {
+        u32 next = (i + 1) % divisions;
+
+        IndexArray_push(&mesh->indices, (u16)i);
+        IndexArray_push(&mesh->indices, tip_index);
+        IndexArray_push(&mesh->indices, (u16)next);
+    }
+    // Generate indices for base cap
+    for (u32 i = 0; i < divisions; ++i) {
+        u32 next = (i + 1) % divisions;
+
+        IndexArray_push(&mesh->indices, base_center);
+        IndexArray_push(&mesh->indices, (u16)next);
+        IndexArray_push(&mesh->indices, (u16)i);
+    }
+    // Generate edge indices
+    for (u32 i = 0; i < divisions; ++i) {
+        u32 next = (i + 1) % divisions;
+
+        // Base ring
+        IndexArray_push(&mesh->edge_indices, (u16)i);
+        IndexArray_push(&mesh->edge_indices, (u16)next);
+
+        // Edge to tip (only every few divisions to avoid clutter)
+        if (i % (divisions / 4) == 0) {
+            IndexArray_push(&mesh->edge_indices, (u16)i);
+            IndexArray_push(&mesh->edge_indices, tip_index);
         }
     }
 }
