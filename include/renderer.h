@@ -7,6 +7,7 @@
 #include "core.h"
 #include "mesh.h"
 #include "webgpu.h"
+#include "wgpu.h"
 
 /* Types */
 
@@ -32,12 +33,19 @@ typedef struct WgpuCallbackContext {
     WGPUDevice* device;
 } WgpuCallbackContext;
 
+typedef struct WgpuBufferMapContext {
+    WGPUMapAsyncStatus status;
+    bool completed;
+    WGPUStringView message;
+} WgpuBufferMapContext;
+
 typedef struct Renderer {
     bool enable_edges;
     WGPUAdapter adapter;
     WGPUDevice device;
     WGPUQueue queue;
     RenderMode render_mode;
+    WGPUInstance instance;
     union {
         struct {
             WGPUTexture texture;
@@ -63,10 +71,13 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer);
 ReturnStatus Renderer_init_windowed(
     Renderer* renderer,
     const WGPUInstance instance,
+    const WGPUSurface surface,
     const u32 width,
     const u32 height
 );
-ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height);
+ReturnStatus Renderer_init_headless(
+    Renderer* renderer, const WGPUInstance instance, u32 width, u32 height
+);
 void Renderer_render_mesh(
     Renderer* renderer,
     const MeshType mesh_type,
@@ -90,7 +101,7 @@ void Renderer_update_uniforms(
 static inline void adapter_request_callback(
     WGPURequestAdapterStatus status,
     WGPUAdapter adapter,
-    WGPUStringView msg,
+    WGPUStringView message,
     void* userdata1,
     void* userdata2
 );
@@ -98,7 +109,14 @@ static inline void adapter_request_callback(
 static inline void device_request_callback(
     WGPURequestDeviceStatus status,
     WGPUDevice device,
-    WGPUStringView msg,
+    WGPUStringView message,
+    void* userdata1,
+    void* userdata2
+);
+
+static inline void buffer_map_callback(
+    WGPUMapAsyncStatus status,
+    WGPUStringView message,
     void* userdata1,
     void* userdata2
 );
@@ -174,6 +192,7 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
 ReturnStatus Renderer_init_windowed(
     Renderer* renderer,
     const WGPUInstance instance,
+    const WGPUSurface surface,
     const u32 width,
     const u32 height
 ) {
@@ -183,6 +202,9 @@ ReturnStatus Renderer_init_windowed(
         .adapter = &renderer->adapter,
         .device = &renderer->device,
     };
+
+    renderer->instance = instance;
+    renderer->render_target.windowed.surface = surface;
 
     // Adapter request
     if (renderer->adapter != NULL) {
@@ -331,7 +353,9 @@ ReturnStatus Renderer_init_windowed(
     Mesh_create_disc(&renderer->meshes[MESH_TYPE_DISC], 32);
     Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_DISC], renderer);
     Mesh_create_cylinder(&renderer->meshes[MESH_TYPE_CYLINDER], 16);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CYLINDER], renderer);
+    Renderer_create_mesh_buffers(
+        &renderer->meshes[MESH_TYPE_CYLINDER], renderer
+    );
     Mesh_create_cone(&renderer->meshes[MESH_TYPE_CONE], 16);
     Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CONE], renderer);
 
@@ -508,19 +532,17 @@ ReturnStatus Renderer_init_windowed(
     return RETURN_SUCCESS;
 }
 
-ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
+ReturnStatus Renderer_init_headless(
+    Renderer* renderer, const WGPUInstance instance, u32 width, u32 height
+) {
     renderer->render_mode = RENDER_MODE_HEADLESS;
     WgpuCallbackContext cb_ctx = {
         .completed = false,
         .adapter = &renderer->adapter,
         .device = &renderer->device,
     };
-    WGPUInstanceDescriptor instance_desc = {0};
-    WGPUInstance instance = wgpuCreateInstance(&instance_desc);
-    if (instance == NULL) {
-        log_error("Failed to create WGPU instance");
-        return RETURN_FAILURE;
-    }
+
+    renderer->instance = instance;
 
     // Adapter request
     if (renderer->adapter != NULL) {
@@ -536,11 +558,13 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
         .callback = adapter_request_callback,
         .userdata1 = &cb_ctx,
     };
-    wgpuInstanceRequestAdapter(instance, &adapter_options, adapter_cb_info);
+    wgpuInstanceRequestAdapter(
+        renderer->instance, &adapter_options, adapter_cb_info
+    );
 
     // TODO (mmckenna) : Handle this async
     while (!cb_ctx.completed) {
-        wgpuInstanceProcessEvents(instance);
+        wgpuInstanceProcessEvents(renderer->instance);
     }
     if (!cb_ctx.success) {
         return RETURN_FAILURE;
@@ -560,7 +584,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
 
     // TODO (mckenna) : Handle this async
     while (!cb_ctx.completed) {
-        wgpuInstanceProcessEvents(instance);
+        wgpuInstanceProcessEvents(renderer->instance);
     }
     if (!cb_ctx.success) {
         wgpuAdapterRelease(renderer->adapter);
@@ -651,6 +675,17 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
 
     // Create meshes
     Mesh_create_cube(&renderer->meshes[MESH_TYPE_CUBE]);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CUBE], renderer);
+    Mesh_create_sphere_uv(&renderer->meshes[MESH_TYPE_SPHERE], 16);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_SPHERE], renderer);
+    Mesh_create_disc(&renderer->meshes[MESH_TYPE_DISC], 32);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_DISC], renderer);
+    Mesh_create_cylinder(&renderer->meshes[MESH_TYPE_CYLINDER], 16);
+    Renderer_create_mesh_buffers(
+        &renderer->meshes[MESH_TYPE_CYLINDER], renderer
+    );
+    Mesh_create_cone(&renderer->meshes[MESH_TYPE_CONE], 16);
+    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CONE], renderer);
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry bind_group_layout_entries[] = {
@@ -661,7 +696,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
             .buffer = (WGPUBufferBindingLayout){
                 .type = WGPUBufferBindingType_Uniform,
                 .hasDynamicOffset = false,
-                .minBindingSize = 0,
+                .minBindingSize = sizeof(Uniform),
             },
         },
     };
@@ -675,7 +710,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
     );
 
     // Create bind group
-    WGPUBindGroupEntry bind_group_enties[] = {
+    WGPUBindGroupEntry bind_group_entries[] = {
         (WGPUBindGroupEntry){
             .binding = 0,
             .buffer = renderer->uniform_buffer,
@@ -686,9 +721,11 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
     WGPUBindGroupDescriptor bind_group_desc = {
         .label = {"Bind Group", WGPU_STRLEN},
         .layout = bind_group_layout,
-        .entries = bind_group_enties,
+        .entries = bind_group_entries,
+        .entryCount = 1,
     };
-    wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
+    renderer->uniform_bind_group =
+        wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
 
     // Create solid render pipeline
     String default_shader_src = {0};
@@ -742,6 +779,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
         .module = default_shader,
         .entryPoint = {"fs_main", WGPU_STRLEN},
         .targets = &color_target_state,
+        .targetCount = 1,
     };
     WGPUDepthStencilState depth_pencil_state = {
         .format = depth_texture_format,
@@ -765,7 +803,7 @@ ReturnStatus Renderer_init_headless(Renderer* renderer, u32 width, u32 height) {
             (WGPUPrimitiveState){
                 .topology = WGPUPrimitiveTopology_TriangleList,
                 .frontFace = WGPUFrontFace_CCW,
-                .cullMode = WGPUCullMode_Back,
+                .cullMode = WGPUCullMode_None,
                 .unclippedDepth = false,
             },
         .multisample = (WGPUMultisampleState){
@@ -905,7 +943,9 @@ void Renderer_render_mesh_edges(
 
     Mesh* mesh = &renderer->meshes[mesh_type];
     if (instances.count > mesh->edge_instance_capacity) {
-        Mesh_realloc_edge_instance_buffer(mesh, renderer->device, instances.count);
+        Mesh_realloc_edge_instance_buffer(
+            mesh, renderer->device, instances.count
+        );
     }
     wgpuQueueWriteBuffer(
         renderer->queue,
@@ -1154,11 +1194,15 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             texture_view = wgpuTextureCreateView(
                 renderer->render_target.headless.texture, &texture_view_desc
             );
-            if (texture_view != NULL) wgpuTextureViewRelease(texture_view);
+            if (texture_view != NULL) {
+                log_debug("Texture format: %d", texture_view_desc.format);
+                Renderer_render_to_view(renderer, texture_view);
+                wgpuTextureViewRelease(texture_view);
+            }
         } break;
         case RENDER_MODE_WINDOWED: {
             texture_view_desc.label =
-                (WGPUStringView){"Headless Texture View", WGPU_STRLEN};
+                (WGPUStringView){"Windowed Texture View", WGPU_STRLEN};
             texture_view_desc.format =
                 renderer->render_target.windowed.surface_config.format;
             WGPUSurfaceTexture surface_texture = {0};
@@ -1172,13 +1216,16 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                 // TODO (mmckenna) reconfigure surface and re-initialize depth
                 // texture
                 status = RETURN_FAILURE;
+                if (surface_texture.texture != NULL) {
+                    wgpuTextureRelease(surface_texture.texture);
+                }
                 break;
             }
 
-            if (status == RETURN_SUCCESS) {
-                texture_view = wgpuTextureCreateView(
-                    surface_texture.texture, &texture_view_desc
-                );
+            texture_view = wgpuTextureCreateView(
+                surface_texture.texture, &texture_view_desc
+            );
+            if (texture_view != NULL) {
                 Renderer_render_to_view(renderer, texture_view);
                 WGPUStatus present_status = wgpuSurfacePresent(
                     renderer->render_target.windowed.surface
@@ -1188,9 +1235,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                     log_error("Failed to present surface");
                     status = RETURN_FAILURE;
                 }
-            }
-            if (texture_view != NULL) wgpuTextureViewRelease(texture_view);
-            if (surface_texture.texture != NULL) {
+                wgpuTextureViewRelease(texture_view);
                 wgpuTextureRelease(surface_texture.texture);
             }
         } break;
@@ -1230,6 +1275,7 @@ void Renderer_destroy(Renderer* renderer) {
     if (renderer->queue != NULL) wgpuQueueRelease(renderer->queue);
     if (renderer->device != NULL) wgpuDeviceRelease(renderer->device);
     if (renderer->adapter != NULL) wgpuAdapterRelease(renderer->adapter);
+    if (renderer->instance != NULL) wgpuInstanceRelease(renderer->instance);
 }
 
 void Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
@@ -1294,12 +1340,121 @@ void Renderer_update_uniforms(
     );
 }
 
+ReturnStatus Renderer_copy_frame_to_buffer(
+    Renderer* renderer, u32 width, u32 height, u8* buffer, u32 buffer_capacity
+) {
+    if (buffer == NULL) {
+        log_error("Copy frame destination buffer was NULL.");
+        return RETURN_FAILURE;
+    }
+
+    if (renderer->render_mode != RENDER_MODE_HEADLESS) {
+        log_error(
+            "You must be using headless render mode to copy frame to buffer."
+        );
+        return RETURN_FAILURE;
+    }
+
+    // RGBA8 assumed
+    u32 bytes_per_pixel = 4;
+    u32 buffer_size = width * height * bytes_per_pixel;
+
+    if (buffer_capacity < buffer_size) {
+        log_error(
+            "Buffer of size %d is too small.  Expected %d minimum.",
+            buffer_capacity,
+            buffer_size
+        );
+        return RETURN_FAILURE;
+    }
+
+    WGPUBuffer staging_buffer = create_buffer(
+        renderer->device,
+        buffer_size,
+        WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
+        "Readback Staging Buffer"
+    );
+    if (staging_buffer == NULL) {
+        log_error("Failed to create staging buffer.");
+        return RETURN_FAILURE;
+    }
+
+    WGPUCommandEncoderDescriptor encoder_desc = {
+        .label = {"Texture Readback Encoder", WGPU_STRLEN},
+    };
+    WGPUCommandEncoder encoder =
+        wgpuDeviceCreateCommandEncoder(renderer->device, &encoder_desc);
+
+    WGPUTexelCopyTextureInfo src = {
+        .texture = renderer->render_target.headless.texture,
+        .mipLevel = 0,
+        .origin = {0, 0, 0},
+        .aspect = WGPUTextureAspect_All,
+    };
+
+    WGPUTexelCopyBufferInfo dst = {
+        .buffer = staging_buffer,
+        .layout = {
+            .offset = 0,
+            .bytesPerRow = width * 4,
+            .rowsPerImage = height,
+        },
+    };
+
+    WGPUExtent3D copy_size = {width, height, 1};
+    wgpuCommandEncoderCopyTextureToBuffer(encoder, &src, &dst, &copy_size);
+
+    WGPUCommandBufferDescriptor cmd_buf_desc = {
+        .label = {"Texture Readback Command Buffer", WGPU_STRLEN},
+    };
+    WGPUCommandBuffer cmd_buffer =
+        wgpuCommandEncoderFinish(encoder, &cmd_buf_desc);
+    wgpuQueueSubmit(renderer->queue, 1, &cmd_buffer);
+
+    WgpuBufferMapContext buffer_map_ctx = {
+        .completed = false,
+        .status = WGPUMapAsyncStatus_Unknown,
+    };
+    WGPUBufferMapCallbackInfo map_callback_info = {
+        .mode = WGPUCallbackMode_AllowProcessEvents,
+        .callback = buffer_map_callback,
+        .userdata1 = &buffer_map_ctx,
+    };
+    WGPUFuture future = wgpuBufferMapAsync(
+        staging_buffer, WGPUMapMode_Read, 0, buffer_size, map_callback_info
+    );
+
+    // WGPUFutureWaitInfo wait_info = {
+    //     .future = future,
+    // };
+    // wgpuInstanceWaitAny(renderer->instance, 1, &wait_info, UINT64_MAX);
+    // while (wgpuBufferGetMapState(staging_buffer) ==
+    // WGPUBufferMapState_Unmapped) {
+    while (!buffer_map_ctx.completed) {
+        // wgpuDevicePoll(renderer->device, false, NULL);
+        wgpuInstanceProcessEvents(renderer->instance);
+    }
+
+    const void* mapped_data =
+        wgpuBufferGetConstMappedRange(staging_buffer, 0, buffer_size);
+    if (mapped_data != NULL) {
+        memcpy(buffer, mapped_data, buffer_size);
+    }
+
+    wgpuBufferUnmap(staging_buffer);
+    wgpuBufferRelease(staging_buffer);
+    wgpuCommandBufferRelease(cmd_buffer);
+    wgpuCommandEncoderRelease(encoder);
+
+    return mapped_data == NULL ? RETURN_FAILURE : RETURN_SUCCESS;
+}
+
 /* WGPU callback functions */
 
 static inline void adapter_request_callback(
     WGPURequestAdapterStatus status,
     WGPUAdapter adapter,
-    WGPUStringView msg,
+    WGPUStringView message,
     void* userdata1,
     void* userdata2
 ) {
@@ -1310,7 +1465,9 @@ static inline void adapter_request_callback(
         ctx->success = true;
         *ctx->adapter = adapter;
     } else {
-        log_error("Failed to acquire adapter: %.*s", (int)msg.length, msg.data);
+        log_error(
+            "Failed to acquire adapter: %.*s", (int)message.length, message.data
+        );
         ctx->success = false;
     }
 }
@@ -1318,7 +1475,7 @@ static inline void adapter_request_callback(
 static inline void device_request_callback(
     WGPURequestDeviceStatus status,
     WGPUDevice device,
-    WGPUStringView msg,
+    WGPUStringView message,
     void* userdata1,
     void* userdata2
 ) {
@@ -1329,8 +1486,33 @@ static inline void device_request_callback(
         ctx->success = true;
         *ctx->device = device;
     } else {
-        log_error("Failed to acquire device: %.*s", (int)msg.length, msg.data);
+        log_error(
+            "Failed to acquire device: %.*s", (int)message.length, message.data
+        );
         ctx->success = false;
+    }
+}
+
+static inline void buffer_map_callback(
+    WGPUMapAsyncStatus status,
+    WGPUStringView message,
+    void* userdata1,
+    void* userdata2
+) {
+    if (userdata1 != NULL) {
+        WgpuBufferMapContext* ctx = (WgpuBufferMapContext*)userdata1;
+        ctx->completed = true;
+        ctx->status = status;
+        if (message.length != 0) {
+            ctx->message = message;
+        }
+        if (status != WGPUMapAsyncStatus_Success) {
+            if (message.length > 0) {
+                log_error("Failed to map buffer: %s", message.data);
+            } else {
+                log_error("Failed to map buffer: UNKNOWN ERROR");
+            }
+        }
     }
 }
 

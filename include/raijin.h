@@ -27,7 +27,9 @@ typedef struct Raijin {
 
 /* Function prototypes */
 
-ReturnStatus Raijin_init(Raijin*, const char* title, u32 width, u32 height);
+ReturnStatus Raijin_init(
+    Raijin*, const char* title, u32 width, u32 height, RenderMode mode
+);
 void Raijin_handle_events(Raijin* engine);
 void Raijin_draw_cube(
     Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
@@ -48,44 +50,63 @@ void Raijin_draw_cone_instance(Raijin* engine, Instance instance);
 void Raijin_draw_cone(
     Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
 );
+
+ReturnStatus Raijin_copy_frame_to_buffer(
+    Raijin* engine, u32 width, u32 height, u8* buffer, u32 buffer_capacity
+);
+
 void Raijin_destroy(Raijin* engine);
 
 /* Function */
 
 ReturnStatus Raijin_init(
-    Raijin* engine, const char* title, u32 width, u32 height
+    Raijin* engine, const char* title, u32 width, u32 height, RenderMode mode
 ) {
-    engine->mouse = (MouseState){
-        .button_left = false,
-        .button_middle = false,
-        .button_right = false,
-        .position = {0.0f, 0.0f},
-    };
-    if (!SdlWindow_init(&engine->window, title, width, height)) {
-        return RETURN_FAILURE;
-    }
     WGPUInstanceDescriptor instance_desc = {0};
     WGPUInstance instance = wgpuCreateInstance(&instance_desc);
     if (instance == NULL) {
         log_error("Failed to create WGPU instance");
-        return false;
-    }
-
-    // Create platform-specific surface
-    engine->renderer.render_target.windowed.surface =
-        create_surface_sdl3(instance, engine->window.handle);
-    if (engine->renderer.render_target.windowed.surface == NULL) {
-        log_error("Failed to create surface");
-        return false;
-    }
-
-    ReturnStatus status =
-        Renderer_init_windowed(&engine->renderer, instance, width, height);
-    if (status != RETURN_SUCCESS) {
-        Renderer_destroy(&engine->renderer);
-        wgpuInstanceRelease(instance);
-        Raijin_destroy(engine);
         return RETURN_FAILURE;
+    }
+
+    if (mode == RENDER_MODE_WINDOWED) {
+        engine->mouse = (MouseState){
+            .button_left = false,
+            .button_middle = false,
+            .button_right = false,
+            .position = {0.0f, 0.0f},
+        };
+        if (!SdlWindow_init(&engine->window, title, width, height)) {
+            return RETURN_FAILURE;
+        }
+
+        // Create platform-specific surface
+        WGPUSurface surface =
+            create_surface_sdl3(instance, engine->window.handle);
+        if (surface == NULL) {
+            log_error("Failed to create surface");
+            wgpuInstanceRelease(instance);
+            return RETURN_FAILURE;
+        }
+
+        ReturnStatus status = Renderer_init_windowed(
+            &engine->renderer, instance, surface, width, height
+        );
+        if (status != RETURN_SUCCESS) {
+            Renderer_destroy(&engine->renderer);
+            wgpuInstanceRelease(instance);
+            Raijin_destroy(engine);
+            return RETURN_FAILURE;
+        }
+    } else {
+        ReturnStatus status =
+            Renderer_init_headless(&engine->renderer, instance, width, height);
+        if (status != RETURN_SUCCESS) {
+            Renderer_destroy(&engine->renderer);
+            wgpuInstanceRelease(instance);
+            Raijin_destroy(engine);
+            return RETURN_FAILURE;
+        }
     }
 
     PanOrbitCamera_init(&engine->camera);
@@ -203,6 +224,14 @@ void Raijin_draw_cone(
     glm_translate(instance.model_matrix, position);
     glm_scale_uni(instance.model_matrix, scale);
     Raijin_draw_cone_instance(engine, instance);
+}
+
+ReturnStatus Raijin_copy_frame_to_buffer(
+    Raijin* engine, u32 width, u32 height, u8* buffer, u32 buffer_capacity
+) {
+    return Renderer_copy_frame_to_buffer(
+        &engine->renderer, width, height, buffer, buffer_capacity
+    );
 }
 
 #endif /* RAIJIN_H */

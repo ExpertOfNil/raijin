@@ -26,6 +26,22 @@ int main(int argc, char** argv) {
     nob_cmd_append(&cmd, "-Llib/wgpu", "-lwgpu_native");
     nob_cmd_append(&cmd, "-Llib/cglm", "-lcglm");
     nob_cmd_append(&cmd, "-lSDL3");
+    if (!nob_cmd_run_sync_and_reset(&cmd)) return 1;
+
+    nob_cmd_append(&cmd, "clang", COMMON_CFLAGS);
+    nob_cmd_append(
+        &cmd,
+        "-Iinclude",
+        "-Ilib/wgpu/include",
+        "-Ilib/cglm/include",
+        "-Ilib/cimpl/include"
+    );
+    nob_cmd_append(&cmd, SRC_DIR "main_headless.c");
+    nob_cmd_append(&cmd, "-o", BUILD_DIR "raijin_headless");
+    nob_cmd_append(&cmd, "-lm");
+    nob_cmd_append(&cmd, "-Llib/wgpu", "-lwgpu_native");
+    nob_cmd_append(&cmd, "-Llib/cglm", "-lcglm");
+    nob_cmd_append(&cmd, "-lSDL3");
     if (!nob_cmd_run_sync(cmd)) return 1;
     return 0;
 }
