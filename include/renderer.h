@@ -124,7 +124,6 @@ static inline void buffer_map_callback(
 /* Functions */
 
 void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
-    // Vertex buffer
     mesh->vertex_buffer = create_buffer(
         renderer->device,
         mesh->vertices.count * sizeof(Vertex),
@@ -140,7 +139,6 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         mesh->vertices.count * sizeof(Vertex)
     );
 
-    // Instance buffer
     mesh->instance_buffer = create_buffer(
         renderer->device,
         mesh->instance_capacity * sizeof(Instance),
@@ -148,7 +146,6 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         "Instance Buffer"
     );
 
-    // Index buffer
     mesh->index_buffer = create_buffer(
         renderer->device,
         mesh->indices.count * sizeof(u16),
@@ -164,7 +161,6 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         mesh->indices.count * sizeof(u16)
     );
 
-    // Edge instance buffer
     mesh->edge_instance_buffer = create_buffer(
         renderer->device,
         mesh->edge_instance_capacity * sizeof(Instance),
@@ -172,7 +168,6 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         "Edge Instance Buffer"
     );
 
-    // Edge index buffer
     mesh->edge_index_buffer = create_buffer(
         renderer->device,
         mesh->edge_indices.count * sizeof(u16),
@@ -187,6 +182,157 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         mesh->edge_indices.items,
         mesh->edge_indices.count * sizeof(u16)
     );
+}
+
+void Renderer_create_depth_texture(
+    Renderer* renderer,
+    u32 width,
+    u32 height,
+    const char* label,
+    WGPUTextureFormat format
+) {
+    WGPUTextureDescriptor depth_texture_desc = {
+        .label = {label, WGPU_STRLEN},
+        .size =
+            (WGPUExtent3D){
+                .width = width > 0 ? width : 256,
+                .height = height > 0 ? height : 256,
+                .depthOrArrayLayers = 1,
+            },
+        .mipLevelCount = 1,
+        .sampleCount = 1,
+        .dimension = WGPUTextureDimension_2D,
+        .format = format,
+        .usage = WGPUTextureUsage_RenderAttachment,
+        .viewFormats = &format,
+        .viewFormatCount = 1,
+    };
+    if (renderer->depth_texture != NULL) {
+        wgpuTextureRelease(renderer->depth_texture);
+    }
+    renderer->depth_texture =
+        wgpuDeviceCreateTexture(renderer->device, &depth_texture_desc);
+
+    if (renderer->depth_texture_view != NULL) {
+        wgpuTextureViewRelease(renderer->depth_texture_view);
+    }
+    char view_label[256] = {0};
+    snprintf(view_label, sizeof(view_label), "%s View", label);
+    WGPUTextureViewDescriptor depth_texture_view_desc = {
+        .label = {view_label, WGPU_STRLEN},
+        .format = format,
+        .dimension = WGPUTextureViewDimension_2D,
+        .baseMipLevel = 0,
+        .mipLevelCount = 1,
+        .baseArrayLayer = 0,
+        .arrayLayerCount = 1,
+    };
+    renderer->depth_texture_view = wgpuTextureCreateView(
+        renderer->depth_texture, &depth_texture_view_desc
+    );
+}
+
+// Expects "vs_main" and "fs_main"
+ReturnStatus Renderer_create_render_pipeline(
+    Renderer* renderer,
+    WGPURenderPipeline* pipeline,
+    const char* label,
+    const char* shader_path,
+    const WGPUTextureFormat texture_format,
+    const WGPUTextureFormat depth_texture_format,
+    const WGPUBindGroupLayout bind_group_layout,
+    const WGPUPrimitiveTopology topology,
+    const WGPUCullMode cull_mode
+) {
+    String shader_src = {0};
+    ReturnStatus shader_load_status = load_shader(shader_path, &shader_src);
+    if (shader_load_status != RETURN_SUCCESS) {
+        log_error("Failed to load shader");
+        return RETURN_FAILURE;
+    }
+    char label_buffer[256] = {0};
+    snprintf(label_buffer, sizeof(label_buffer), "%s Shader Module", label);
+    WGPUShaderSourceWGSL wgsl_desc = {
+        .chain.sType = WGPUSType_ShaderSourceWGSL,
+        .code = {.data = shader_src.items, shader_src.count}
+    };
+    WGPUShaderModuleDescriptor shader_desc = {
+        .nextInChain = &wgsl_desc.chain,
+        .label = {label_buffer, WGPU_STRLEN},
+    };
+    WGPUShaderModule shader =
+        wgpuDeviceCreateShaderModule(renderer->device, &shader_desc);
+    WGPUVertexBufferLayout vertex_buffer_layouts[] = {
+        Vertex_desc(),
+        Instance_desc(),
+    };
+    WGPUVertexState vert_state = {
+        .module = shader,
+        .entryPoint = {"vs_main", WGPU_STRLEN},
+        .bufferCount = 2,
+        .buffers = vertex_buffer_layouts,
+    };
+
+    WGPUBlendState blend_state = {
+        .color =
+            (WGPUBlendComponent){
+                .operation = WGPUBlendOperation_Add,
+                .srcFactor = WGPUBlendFactor_SrcAlpha,
+                .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
+            },
+        .alpha = (WGPUBlendComponent){
+            .operation = WGPUBlendOperation_Add,
+            .srcFactor = WGPUBlendFactor_One,
+            .dstFactor = WGPUBlendFactor_Zero,
+        },
+    };
+    WGPUColorTargetState color_target_state = {
+        .format = texture_format,
+        .blend = &blend_state,
+        .writeMask = WGPUColorWriteMask_All,
+    };
+    WGPUFragmentState frag_state = {
+        .module = shader,
+        .entryPoint = {"fs_main", WGPU_STRLEN},
+        .targets = &color_target_state,
+        .targetCount = 1,
+    };
+    WGPUDepthStencilState depth_pencil_state = {
+        .format = depth_texture_format,
+        .depthWriteEnabled = true,
+        .depthCompare = WGPUCompareFunction_Less,
+    };
+    snprintf(label_buffer, sizeof(label_buffer), "%s Layout", label);
+    WGPUPipelineLayoutDescriptor solid_pipeline_layout_desc = {
+        .label = {label_buffer, WGPU_STRLEN},
+        .bindGroupLayouts = &bind_group_layout,
+        .bindGroupLayoutCount = 1,
+    };
+    WGPURenderPipelineDescriptor solid_pipeline_desc = {
+        .label = {label, WGPU_STRLEN},
+        .layout = wgpuDeviceCreatePipelineLayout(
+            renderer->device, &solid_pipeline_layout_desc
+        ),
+        .vertex = vert_state,
+        .fragment = &frag_state,
+        .depthStencil = &depth_pencil_state,
+        .primitive =
+            (WGPUPrimitiveState){
+                .topology = topology,
+                .frontFace = WGPUFrontFace_CCW,
+                .cullMode = cull_mode,
+                .unclippedDepth = false,
+            },
+        .multisample = (WGPUMultisampleState){
+            .count = 1,
+            .mask = 0xFFFFFFFF,
+            .alphaToCoverageEnabled = false,
+        },
+    };
+    *pipeline =
+        wgpuDeviceCreateRenderPipeline(renderer->device, &solid_pipeline_desc);
+    String_free(&shader_src);
+    return RETURN_SUCCESS;
 }
 
 ReturnStatus Renderer_init_windowed(
@@ -222,7 +368,6 @@ ReturnStatus Renderer_init_windowed(
     };
     wgpuInstanceRequestAdapter(instance, &adapter_options, adapter_cb_info);
 
-    // TODO (mmckenna) : Handle this async
     while (!cb_ctx.completed) {
         wgpuInstanceProcessEvents(instance);
     }
@@ -243,7 +388,6 @@ ReturnStatus Renderer_init_windowed(
 
     wgpuAdapterRequestDevice(renderer->adapter, &device_desc, device_cb_info);
 
-    // TODO (mckenna) : Handle this async
     while (!cb_ctx.completed) {
         wgpuInstanceProcessEvents(instance);
     }
@@ -291,42 +435,8 @@ ReturnStatus Renderer_init_windowed(
 
     // Create depth texture
     WGPUTextureFormat depth_texture_format = WGPUTextureFormat_Depth24Plus;
-    WGPUTextureDescriptor depth_texture_desc = {
-        .label = {"Depth Texture", WGPU_STRLEN},
-        .size =
-            (WGPUExtent3D){
-                .width = width > 0 ? width : 256,
-                .height = height > 0 ? height : 256,
-                .depthOrArrayLayers = 1,
-            },
-        .mipLevelCount = 1,
-        .sampleCount = 1,
-        .dimension = WGPUTextureDimension_2D,
-        .format = depth_texture_format,
-        .usage = WGPUTextureUsage_RenderAttachment,
-        .viewFormats = &depth_texture_format,
-        .viewFormatCount = 1,
-    };
-    if (renderer->depth_texture != NULL) {
-        wgpuTextureRelease(renderer->depth_texture);
-    }
-    renderer->depth_texture =
-        wgpuDeviceCreateTexture(renderer->device, &depth_texture_desc);
-
-    if (renderer->depth_texture_view != NULL) {
-        wgpuTextureViewRelease(renderer->depth_texture_view);
-    }
-    WGPUTextureViewDescriptor depth_texture_view_desc = {
-        .label = {"Depth Texture View", WGPU_STRLEN},
-        .format = WGPUTextureFormat_Depth24Plus,
-        .dimension = WGPUTextureViewDimension_2D,
-        .baseMipLevel = 0,
-        .mipLevelCount = 1,
-        .baseArrayLayer = 0,
-        .arrayLayerCount = 1,
-    };
-    renderer->depth_texture_view = wgpuTextureCreateView(
-        renderer->depth_texture, &depth_texture_view_desc
+    Renderer_create_depth_texture(
+        renderer, width, height, "Depth Texture", depth_texture_format
     );
 
     // Create uniform buffer
@@ -400,135 +510,36 @@ ReturnStatus Renderer_init_windowed(
         wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
 
     // Create solid render pipeline
-    String default_shader_src = {0};
-    ReturnStatus shader_load_status = load_shader(
-        RAIJIN_ASSETS_DIR "/shaders/default_shader.wgsl", &default_shader_src
+    ReturnStatus create_pipeline_status = Renderer_create_render_pipeline(
+        renderer,
+        &renderer->solid_pipeline,
+        "Solid Pipeline",
+        RAIJIN_ASSETS_DIR "/shaders/solid_shader.wgsl",
+        texture_format,
+        depth_texture_format,
+        bind_group_layout,
+        WGPUPrimitiveTopology_TriangleList,
+        WGPUCullMode_None
     );
-    if (shader_load_status != RETURN_SUCCESS) {
-        log_error("Failed to load shader");
-        // TODO (mmcknna) : what to do when shader loading fails?
+    if (create_pipeline_status != RETURN_SUCCESS) {
+        return RETURN_FAILURE;
     }
-    WGPUShaderSourceWGSL wgsl_desc = {
-        .chain.sType = WGPUSType_ShaderSourceWGSL,
-        .code = {.data = default_shader_src.items, default_shader_src.count}
-    };
-    WGPUShaderModuleDescriptor default_shader_desc = {
-        .nextInChain = &wgsl_desc.chain,
-        .label = {"Default Shader", WGPU_STRLEN},
-    };
-    WGPUShaderModule default_shader =
-        wgpuDeviceCreateShaderModule(renderer->device, &default_shader_desc);
-    WGPUVertexBufferLayout vertex_buffer_layouts[] = {
-        Vertex_desc(),
-        Instance_desc(),
-    };
-    WGPUVertexState vert_state = {
-        .module = default_shader,
-        .entryPoint = {"vs_main", WGPU_STRLEN},
-        .bufferCount = 2,
-        .buffers = vertex_buffer_layouts,
-    };
-
-    WGPUBlendState blend_state = {
-        .color =
-            (WGPUBlendComponent){
-                .operation = WGPUBlendOperation_Add,
-                .srcFactor = WGPUBlendFactor_SrcAlpha,
-                .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
-            },
-        .alpha = (WGPUBlendComponent){
-            .operation = WGPUBlendOperation_Add,
-            .srcFactor = WGPUBlendFactor_One,
-            .dstFactor = WGPUBlendFactor_Zero,
-        },
-    };
-    WGPUColorTargetState color_target_state = {
-        .format = texture_format,
-        .blend = &blend_state,
-        .writeMask = WGPUColorWriteMask_All,
-    };
-    WGPUFragmentState frag_state = {
-        .module = default_shader,
-        .entryPoint = {"fs_main", WGPU_STRLEN},
-        .targets = &color_target_state,
-        .targetCount = 1,
-    };
-    WGPUDepthStencilState depth_pencil_state = {
-        .format = depth_texture_format,
-        .depthWriteEnabled = true,
-        .depthCompare = WGPUCompareFunction_Less,
-    };
-    WGPUPipelineLayoutDescriptor solid_pipeline_layout_desc = {
-        .label = {"Solid Pipeline Layout", WGPU_STRLEN},
-        .bindGroupLayouts = &bind_group_layout,
-        .bindGroupLayoutCount = 1,
-    };
-    WGPURenderPipelineDescriptor solid_pipeline_desc = {
-        .label = {"Solid Pipeline", WGPU_STRLEN},
-        .layout = wgpuDeviceCreatePipelineLayout(
-            renderer->device, &solid_pipeline_layout_desc
-        ),
-        .vertex = vert_state,
-        .fragment = &frag_state,
-        .depthStencil = &depth_pencil_state,
-        .primitive =
-            (WGPUPrimitiveState){
-                .topology = WGPUPrimitiveTopology_TriangleList,
-                .frontFace = WGPUFrontFace_CCW,
-                .cullMode = WGPUCullMode_None,
-                .unclippedDepth = false,
-            },
-        .multisample = (WGPUMultisampleState){
-            .count = 1,
-            .mask = 0xFFFFFFFF,
-            .alphaToCoverageEnabled = false,
-        },
-    };
-    renderer->solid_pipeline =
-        wgpuDeviceCreateRenderPipeline(renderer->device, &solid_pipeline_desc);
 
     // Create edges render pipeline
-    WGPUFragmentState edges_frag_state = {
-        .module = default_shader,
-        .entryPoint = {"edges_fs_main", WGPU_STRLEN},
-        .targets = &color_target_state,
-        .targetCount = 1,
-    };
-    WGPUPipelineLayoutDescriptor edges_pipeline_layout_desc = {
-        .label = {"Edges Pipeline Layout", WGPU_STRLEN},
-        .bindGroupLayouts = &bind_group_layout,
-        .bindGroupLayoutCount = 1,
-    };
-    WGPUDepthStencilState edges_depth_pencil_state = {
-        .format = WGPUTextureFormat_Depth24Plus,
-        .depthWriteEnabled = false,
-        .depthCompare = WGPUCompareFunction_Less,
-    };
-    WGPURenderPipelineDescriptor edges_pipeline_desc = {
-        .label = {"Edges Pipeline", WGPU_STRLEN},
-        .layout = wgpuDeviceCreatePipelineLayout(
-            renderer->device, &edges_pipeline_layout_desc
-        ),
-        .vertex = vert_state,
-        .fragment = &edges_frag_state,
-        .depthStencil = &edges_depth_pencil_state,
-        .primitive =
-            (WGPUPrimitiveState){
-                .topology = WGPUPrimitiveTopology_LineList,
-                .frontFace = WGPUFrontFace_CCW,
-                .cullMode = WGPUCullMode_Back,
-                .unclippedDepth = false,
-            },
-        .multisample = (WGPUMultisampleState){
-            .count = 1,
-            .mask = 0xFFFFFFFF,
-            .alphaToCoverageEnabled = false,
-        },
-    };
-    renderer->edges_pipeline =
-        wgpuDeviceCreateRenderPipeline(renderer->device, &edges_pipeline_desc);
-
-    String_free(&default_shader_src);
+    create_pipeline_status = Renderer_create_render_pipeline(
+        renderer,
+        &renderer->edges_pipeline,
+        "Edges Pipeline",
+        RAIJIN_ASSETS_DIR "/shaders/edges_shader.wgsl",
+        texture_format,
+        depth_texture_format,
+        bind_group_layout,
+        WGPUPrimitiveTopology_LineList,
+        WGPUCullMode_None
+    );
+    if (create_pipeline_status != RETURN_SUCCESS) {
+        return RETURN_FAILURE;
+    }
     return RETURN_SUCCESS;
 }
 
@@ -619,42 +630,8 @@ ReturnStatus Renderer_init_headless(
 
     // Create depth texture
     WGPUTextureFormat depth_texture_format = WGPUTextureFormat_Depth24Plus;
-    WGPUTextureDescriptor depth_texture_desc = {
-        .label = {"Depth Texture", WGPU_STRLEN},
-        .size =
-            (WGPUExtent3D){
-                .width = width > 0 ? width : 1,
-                .height = height > 0 ? height : 1,
-                .depthOrArrayLayers = 1,
-            },
-        .mipLevelCount = 1,
-        .sampleCount = 1,
-        .dimension = WGPUTextureDimension_2D,
-        .format = depth_texture_format,
-        .usage = WGPUTextureUsage_RenderAttachment,
-        .viewFormats = &depth_texture_format,
-        .viewFormatCount = 1,
-    };
-    if (renderer->depth_texture != NULL) {
-        wgpuTextureRelease(renderer->depth_texture);
-    }
-    renderer->depth_texture =
-        wgpuDeviceCreateTexture(renderer->device, &depth_texture_desc);
-
-    if (renderer->depth_texture_view != NULL) {
-        wgpuTextureViewRelease(renderer->depth_texture_view);
-    }
-    WGPUTextureViewDescriptor depth_texture_view_desc = {
-        .label = {"Depth Texture View", WGPU_STRLEN},
-        .format = WGPUTextureFormat_Depth24Plus,
-        .dimension = WGPUTextureViewDimension_2D,
-        .baseMipLevel = 0,
-        .mipLevelCount = 1,
-        .baseArrayLayer = 0,
-        .arrayLayerCount = 1,
-    };
-    renderer->depth_texture_view = wgpuTextureCreateView(
-        renderer->depth_texture, &depth_texture_view_desc
+    Renderer_create_depth_texture(
+        renderer, width, height, "Depth Texture", depth_texture_format
     );
 
     // Create uniform buffer
@@ -728,135 +705,36 @@ ReturnStatus Renderer_init_headless(
         wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
 
     // Create solid render pipeline
-    String default_shader_src = {0};
-    ReturnStatus shader_load_status = load_shader(
-        RAIJIN_ASSETS_DIR "/shaders/default_shader.wgsl", &default_shader_src
+    ReturnStatus create_pipeline_status = Renderer_create_render_pipeline(
+        renderer,
+        &renderer->solid_pipeline,
+        "Solid Pipeline",
+        RAIJIN_ASSETS_DIR "/shaders/solid_shader.wgsl",
+        texture_format,
+        depth_texture_format,
+        bind_group_layout,
+        WGPUPrimitiveTopology_TriangleList,
+        WGPUCullMode_None
     );
-    if (shader_load_status != RETURN_SUCCESS) {
-        log_error("Failed to load shader");
-        // TODO (mmcknna) : what to do when shader loading fails?
+    if (create_pipeline_status != RETURN_SUCCESS) {
+        return RETURN_FAILURE;
     }
-    WGPUShaderSourceWGSL wgsl_desc = {
-        .chain.sType = WGPUSType_ShaderSourceWGSL,
-        .code = {.data = default_shader_src.items, default_shader_src.count}
-    };
-    WGPUShaderModuleDescriptor default_shader_desc = {
-        .nextInChain = &wgsl_desc.chain,
-        .label = {"Default Shader", WGPU_STRLEN},
-    };
-    WGPUShaderModule default_shader =
-        wgpuDeviceCreateShaderModule(renderer->device, &default_shader_desc);
-    WGPUVertexBufferLayout vertex_buffer_layouts[] = {
-        Vertex_desc(),
-        Instance_desc(),
-    };
-    WGPUVertexState vert_state = {
-        .module = default_shader,
-        .entryPoint = {"vs_main", WGPU_STRLEN},
-        .bufferCount = 2,
-        .buffers = vertex_buffer_layouts,
-    };
-
-    WGPUBlendState blend_state = {
-        .color =
-            (WGPUBlendComponent){
-                .operation = WGPUBlendOperation_Add,
-                .srcFactor = WGPUBlendFactor_SrcAlpha,
-                .dstFactor = WGPUBlendFactor_OneMinusSrcAlpha,
-            },
-        .alpha = (WGPUBlendComponent){
-            .operation = WGPUBlendOperation_Add,
-            .srcFactor = WGPUBlendFactor_One,
-            .dstFactor = WGPUBlendFactor_Zero,
-        },
-    };
-    WGPUColorTargetState color_target_state = {
-        .format = texture_format,
-        .blend = &blend_state,
-        .writeMask = WGPUColorWriteMask_All,
-    };
-    WGPUFragmentState frag_state = {
-        .module = default_shader,
-        .entryPoint = {"fs_main", WGPU_STRLEN},
-        .targets = &color_target_state,
-        .targetCount = 1,
-    };
-    WGPUDepthStencilState depth_pencil_state = {
-        .format = depth_texture_format,
-        .depthWriteEnabled = true,
-        .depthCompare = WGPUCompareFunction_Less,
-    };
-    WGPUPipelineLayoutDescriptor solid_pipeline_layout_desc = {
-        .label = {"Solid Pipeline Layout", WGPU_STRLEN},
-        .bindGroupLayouts = &bind_group_layout,
-        .bindGroupLayoutCount = 1,
-    };
-    WGPURenderPipelineDescriptor solid_pipeline_desc = {
-        .label = {"Solid Pipeline", WGPU_STRLEN},
-        .layout = wgpuDeviceCreatePipelineLayout(
-            renderer->device, &solid_pipeline_layout_desc
-        ),
-        .vertex = vert_state,
-        .fragment = &frag_state,
-        .depthStencil = &depth_pencil_state,
-        .primitive =
-            (WGPUPrimitiveState){
-                .topology = WGPUPrimitiveTopology_TriangleList,
-                .frontFace = WGPUFrontFace_CCW,
-                .cullMode = WGPUCullMode_None,
-                .unclippedDepth = false,
-            },
-        .multisample = (WGPUMultisampleState){
-            .count = 1,
-            .mask = 0xFFFFFFFF,
-            .alphaToCoverageEnabled = false,
-        },
-    };
-    renderer->solid_pipeline =
-        wgpuDeviceCreateRenderPipeline(renderer->device, &solid_pipeline_desc);
 
     // Create edges render pipeline
-    WGPUFragmentState edges_frag_state = {
-        .module = default_shader,
-        .entryPoint = {"edges_fs_main", WGPU_STRLEN},
-        .targets = &color_target_state,
-        .targetCount = 1,
-    };
-    WGPUPipelineLayoutDescriptor edges_pipeline_layout_desc = {
-        .label = {"Edges Pipeline Layout", WGPU_STRLEN},
-        .bindGroupLayouts = &bind_group_layout,
-        .bindGroupLayoutCount = 1,
-    };
-    WGPUDepthStencilState edges_depth_pencil_state = {
-        .format = WGPUTextureFormat_Depth24Plus,
-        .depthWriteEnabled = false,
-        .depthCompare = WGPUCompareFunction_Less,
-    };
-    WGPURenderPipelineDescriptor edges_pipeline_desc = {
-        .label = {"Edges Pipeline", WGPU_STRLEN},
-        .layout = wgpuDeviceCreatePipelineLayout(
-            renderer->device, &edges_pipeline_layout_desc
-        ),
-        .vertex = vert_state,
-        .fragment = &edges_frag_state,
-        .depthStencil = &edges_depth_pencil_state,
-        .primitive =
-            (WGPUPrimitiveState){
-                .topology = WGPUPrimitiveTopology_LineList,
-                .frontFace = WGPUFrontFace_CCW,
-                .cullMode = WGPUCullMode_Back,
-                .unclippedDepth = false,
-            },
-        .multisample = (WGPUMultisampleState){
-            .count = 1,
-            .mask = 0xFFFFFFFF,
-            .alphaToCoverageEnabled = false,
-        },
-    };
-    renderer->edges_pipeline =
-        wgpuDeviceCreateRenderPipeline(renderer->device, &edges_pipeline_desc);
-
-    String_free(&default_shader_src);
+    create_pipeline_status = Renderer_create_render_pipeline(
+        renderer,
+        &renderer->edges_pipeline,
+        "Edges Pipeline",
+        RAIJIN_ASSETS_DIR "/shaders/edges_shader.wgsl",
+        texture_format,
+        depth_texture_format,
+        bind_group_layout,
+        WGPUPrimitiveTopology_LineList,
+        WGPUCullMode_None
+    );
+    if (create_pipeline_status != RETURN_SUCCESS) {
+        return RETURN_FAILURE;
+    }
     return RETURN_SUCCESS;
 }
 
@@ -1195,7 +1073,6 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                 renderer->render_target.headless.texture, &texture_view_desc
             );
             if (texture_view != NULL) {
-                log_debug("Texture format: %d", texture_view_desc.format);
                 Renderer_render_to_view(renderer, texture_view);
                 wgpuTextureViewRelease(texture_view);
             }
@@ -1227,9 +1104,9 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             );
             if (texture_view != NULL) {
                 Renderer_render_to_view(renderer, texture_view);
-                WGPUStatus present_status = wgpuSurfacePresent(
-                    renderer->render_target.windowed.surface
-                );
+                WGPUStatus present_status =
+                    wgpuSurfacePresent(renderer->render_target.windowed.surface
+                    );
                 // TODO (mmckenna): Handle each status variant
                 if (present_status != WGPUStatus_Success) {
                     log_error("Failed to present surface");
