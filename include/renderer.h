@@ -13,6 +13,8 @@
 
 typedef struct Uniform {
     mat4 view_proj;
+    vec3 view_pos;
+    f32 _pad;
 } Uniform;
 
 typedef struct DrawCommand {
@@ -474,7 +476,7 @@ ReturnStatus Renderer_init_windowed(
         // Uniforms entry.  Currently the same for all render pipelines.
         (WGPUBindGroupLayoutEntry){
             .binding = 0,
-            .visibility = WGPUShaderStage_Vertex,
+            .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
             .buffer = (WGPUBufferBindingLayout){
                 .type = WGPUBufferBindingType_Uniform,
                 .hasDynamicOffset = false,
@@ -607,7 +609,8 @@ ReturnStatus Renderer_init_headless(
 
     // Create render target
     // TODO (mmckenna) : Look at different formats, including `Bgra8UnormSrgb`
-    WGPUTextureFormat texture_format = WGPUTextureFormat_RGBA8Unorm;
+    //WGPUTextureFormat texture_format = WGPUTextureFormat_RGBA8Unorm;
+    WGPUTextureFormat texture_format = WGPUTextureFormat_RGBA8UnormSrgb;
     WGPUTextureDescriptor texture_desc = {
         .label = {"Headless Texture", WGPU_STRLEN},
         .size =
@@ -669,7 +672,7 @@ ReturnStatus Renderer_init_headless(
         // Uniforms entry.  Currently the same for all render pipelines.
         (WGPUBindGroupLayoutEntry){
             .binding = 0,
-            .visibility = WGPUShaderStage_Vertex,
+            .visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment,
             .buffer = (WGPUBufferBindingLayout){
                 .type = WGPUBufferBindingType_Uniform,
                 .hasDynamicOffset = false,
@@ -869,9 +872,9 @@ void Renderer_render_pass_solid(
         .loadOp = WGPULoadOp_Clear,
         .clearValue =
             (WGPUColor){
-                .r = 0.01,
-                .g = 0.01,
-                .b = 0.01,
+                .r = 0.03,
+                .g = 0.03,
+                .b = 0.03,
                 .a = 1.0,
             },
         .storeOp = WGPUStoreOp_Store,
@@ -951,9 +954,9 @@ void Renderer_render_pass_edges(
         .loadOp = WGPULoadOp_Load,
         .clearValue =
             (WGPUColor){
-                .r = 0.01,
-                .g = 0.01,
-                .b = 0.01,
+                .r = 0.03,
+                .g = 0.03,
+                .b = 0.03,
                 .a = 1.0,
             },
         .storeOp = WGPUStoreOp_Store,
@@ -1068,7 +1071,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
         case RENDER_MODE_HEADLESS: {
             texture_view_desc.label =
                 (WGPUStringView){"Headless Texture View", WGPU_STRLEN};
-            texture_view_desc.format = WGPUTextureFormat_RGBA8Unorm;
+            texture_view_desc.format = WGPUTextureFormat_RGBA8UnormSrgb;
             texture_view = wgpuTextureCreateView(
                 renderer->render_target.headless.texture, &texture_view_desc
             );
@@ -1211,6 +1214,9 @@ void Renderer_update_uniforms(
     Renderer* renderer, mat4 proj_matrix, mat4 view_matrix
 ) {
     Uniform uniform = {0};
+    mat4 xform;
+    glm_mat4_inv(view_matrix, xform);
+    glm_vec4_copy3(xform[3], uniform.view_pos);
     glm_mat4_mul(proj_matrix, view_matrix, uniform.view_proj);
     wgpuQueueWriteBuffer(
         renderer->queue, renderer->uniform_buffer, 0, &uniform, sizeof(Uniform)

@@ -3,3 +3,5 @@ nob
 nob.old
 AGENTS.md
 .cache/
+*.ppm
+*.gif

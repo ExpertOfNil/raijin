@@ -1,10 +1,7 @@
 BasedOnStyle: Google
 IndentWidth: 4
----
-Language: Cpp
 ContinuationIndentWidth: 4
 BinPackParameters: false
 BinPackArguments: false
 AlignAfterOpenBracket: BlockIndent
 PackConstructorInitializers: NextLine
----

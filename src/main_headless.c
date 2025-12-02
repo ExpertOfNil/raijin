@@ -1,14 +1,14 @@
 #define CIMPL_IMPLEMENTATION
+#include "cglm/mat4.h"
 #include "cimpl_glm.h"
 #include "mesh.h"
 #include "raijin.h"
-#include "cglm/mat4.h"
 #include "renderer.h"
 
 int main(void) {
     Raijin engine = {0};
-    const u32 width = 1280;
-    const u32 height = 720;
+    const u32 width = 1920;
+    const u32 height = 1080;
     Raijin_init(&engine, "Raijin", width, height, RENDER_MODE_HEADLESS);
     Instance cube_instances[] = {
         {.color = {1.0, 0.0, 0.0, 1.0}},
@@ -84,7 +84,7 @@ int main(void) {
         (vec3){0.0f, 0.0f, 0.0f},
         (vec3){0.0f, 0.0f, 4.0f},
         line_r,
-        (vec4){0.0f, 0.0f, 1.0f, 1.0f}
+        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
     );
     Instance z_axis_tip;
     Instance_from_line(
@@ -92,7 +92,7 @@ int main(void) {
         (vec3){0.0f, 0.0f, 4.0f},
         (vec3){0.0f, 0.0f, 4.5f},
         cone_r,
-        (vec4){0.0f, 0.0f, 1.0f, 1.0f}
+        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
     );
 
     u32 buffer_size = width * height * 4;
@@ -108,7 +108,7 @@ int main(void) {
     f32 theta_delta = 314.159f / 20.0f;
 
     u32 frame_number = 0;
-    while (!engine.window.should_close && frame_number < 10) {
+    while (!engine.window.should_close && frame_number < 20) {
         Raijin_draw_disc_instance(&engine, disc_instance);
         Raijin_draw_sphere_uv_instance(&engine, sphere_instance);
         Raijin_draw_cylinder_instance(&engine, x_axis);
@@ -125,7 +125,7 @@ int main(void) {
             &engine, width, height, output_buffer, buffer_size
         );
         snprintf(
-            output_fname, sizeof(output_fname), "Frame_%d.ppm", frame_number
+            output_fname, sizeof(output_fname), "Frame_%03d.ppm", frame_number
         );
         FILE* fp = fopen(output_fname, "w");
         fprintf(fp, "P6\n%d %d\n255\n", width, height);
@@ -140,17 +140,14 @@ int main(void) {
                 fputc(b, fp);
             }
         }
-        // u32 bytes_written = fwrite(output_buffer, 1, buffer_size, fp);
-        // if (bytes_written <= 0) {
-        //     log_error("Failed to write PPM file bytes");
-        //     return RETURN_FAILURE;
-        // }
         fclose(fp);
         frame_number++;
         theta += theta_delta;
         PanOrbitCamera_orbit(&engine.camera, (vec2){theta_delta, 0.0f});
         Renderer_update_uniforms(
-            &engine.renderer, engine.camera.proj_matrix, engine.camera.view_matrix
+            &engine.renderer,
+            engine.camera.proj_matrix,
+            engine.camera.view_matrix
         );
     }
     Raijin_destroy(&engine);

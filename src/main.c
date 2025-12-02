@@ -80,7 +80,7 @@ int main(void) {
         (vec3){0.0f, 0.0f, 0.0f},
         (vec3){0.0f, 0.0f, 4.0f},
         line_r,
-        (vec4){0.0f, 0.0f, 1.0f, 1.0f}
+        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
     );
     Instance z_axis_tip;
     Instance_from_line(
@@ -88,10 +88,12 @@ int main(void) {
         (vec3){0.0f, 0.0f, 4.0f},
         (vec3){0.0f, 0.0f, 4.5f},
         cone_r,
-        (vec4){0.0f, 0.0f, 1.0f, 1.0f}
+        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
     );
 
-    PanOrbitCamera_orbit(&engine.camera, (vec2){-314.159f * 1.5f, 314.159f / 2.0f});
+    PanOrbitCamera_orbit(
+        &engine.camera, (vec2){-314.159f * 1.5f, 314.159f / 2.0f}
+    );
     Renderer_update_uniforms(
         &engine.renderer, engine.camera.proj_matrix, engine.camera.view_matrix
     );
@@ -106,9 +108,9 @@ int main(void) {
         Raijin_draw_cone_instance(&engine, y_axis_tip);
         Raijin_draw_cylinder_instance(&engine, z_axis);
         Raijin_draw_cone_instance(&engine, z_axis_tip);
-        //for (u32 i = 0; i < 3; ++i) {
-        //    Raijin_draw_cube_instance(&engine, cube_instances[i]);
-        //}
+        // for (u32 i = 0; i < 3; ++i) {
+        //     Raijin_draw_cube_instance(&engine, cube_instances[i]);
+        // }
         Raijin_render(&engine);
     }
 }
