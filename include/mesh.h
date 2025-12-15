@@ -13,7 +13,10 @@
 
 /* Types */
 
-DEFINE_DYNAMIC_ARRAY(u16, IndexArray)
+typedef u32 MeshHandle;
+#define INVALID_MESH_HANDLE ((MeshHandle) - 1)
+
+DEFINE_DYNAMIC_ARRAY(u32, IndexArray)
 
 typedef struct Vertex {
     vec3 position;
@@ -27,17 +30,6 @@ typedef struct Instance {
     vec4 color;
 } Instance;
 DEFINE_DYNAMIC_ARRAY(Instance, InstanceArray)
-
-typedef enum {
-    MESH_TYPE_TRIANGLE,
-    MESH_TYPE_CUBE,
-    MESH_TYPE_TETRAHEDRON,
-    MESH_TYPE_SPHERE,
-    MESH_TYPE_DISC,
-    MESH_TYPE_CYLINDER,
-    MESH_TYPE_CONE,
-    MESH_TYPE_COUNT,
-} MeshType;
 
 typedef struct Mesh {
     VertexArray vertices;
@@ -76,7 +68,7 @@ void Mesh_create_cone(Mesh* mesh, u32 divisions);
 
 /* Static Definitions */
 
-static const u16 CUBE_INDICES[36] = {
+static const u32 CUBE_INDICES[36] = {
     // clang-format off
         // Front
         0, 1, 3,
@@ -99,7 +91,7 @@ static const u16 CUBE_INDICES[36] = {
     // clang-format on
 };
 
-static const u16 CUBE_EDGE_INDICES[24] = {
+static const u32 CUBE_EDGE_INDICES[24] = {
     // clang-format off
         0, 1,
         1, 3,
@@ -359,15 +351,15 @@ void Mesh_create_disc(Mesh* mesh, u32 divisions) {
     }
 
     for (u32 i = 0; i < divisions; ++i) {
-        u16 next = (u16)(1 + (i + 1) % divisions);
+        u32 next = 1 + (i + 1) % divisions;
         IndexArray_push(&mesh->indices, 0);
         IndexArray_push(&mesh->indices, next);
-        IndexArray_push(&mesh->indices, (u16)(1 + i));
+        IndexArray_push(&mesh->indices, 1 + i);
     }
 
     for (u32 i = 0; i < divisions; ++i) {
-        u16 next = (u16)(1 + (i + 1) % divisions);
-        IndexArray_push(&mesh->edge_indices, (u16)(1 + i));
+        u32 next = 1 + (i + 1) % divisions;
+        IndexArray_push(&mesh->edge_indices, 1 + i);
         IndexArray_push(&mesh->edge_indices, next);
     }
 }
@@ -426,9 +418,9 @@ void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
     // Top cap
     for (u32 i = 0; i < longitude; ++i) {
         u32 next = (i + 1) % longitude;
-        IndexArray_push(&mesh->indices, 1 + (u16)top_index);
-        IndexArray_push(&mesh->indices, 1 + (u16)next);
-        IndexArray_push(&mesh->indices, 1 + (u16)i);
+        IndexArray_push(&mesh->indices, 1 + top_index);
+        IndexArray_push(&mesh->indices, 1 + next);
+        IndexArray_push(&mesh->indices, 1 + i);
     }
 
     // Middle quads
@@ -439,10 +431,10 @@ void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
         for (u32 j = 0; j < longitude; ++j) {
             u32 next = (j + 1) % longitude;
 
-            u16 a = (u16)(row + j);
-            u16 b = (u16)(row + next);
-            u16 c = (u16)(next_row + j);
-            u16 d = (u16)(next_row + next);
+            u32 a = row + j;
+            u32 b = row + next;
+            u32 c = next_row + j;
+            u32 d = next_row + next;
 
             IndexArray_push(&mesh->indices, a);
             IndexArray_push(&mesh->indices, b);
@@ -457,29 +449,29 @@ void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
     u32 base = 1 + (latitude - 2) * longitude;
     for (u32 j = 0; j < longitude; ++j) {
         u32 next = (j + 1) % longitude;
-        IndexArray_push(&mesh->indices, (u16)(base + j));
-        IndexArray_push(&mesh->indices, (u16)(base + next));
-        IndexArray_push(&mesh->indices, (u16)(bottom_index));
+        IndexArray_push(&mesh->indices, base + j);
+        IndexArray_push(&mesh->indices, base + next);
+        IndexArray_push(&mesh->indices, bottom_index);
     }
 
     // === Edge Indices ===
     for (u32 j = 0; j < longitude; ++j) {
         // Top pole to first ring
-        IndexArray_push(&mesh->edge_indices, (u16)(top_index));
-        IndexArray_push(&mesh->edge_indices, (u16)(1 + j));
+        IndexArray_push(&mesh->edge_indices, top_index);
+        IndexArray_push(&mesh->edge_indices, 1 + j);
 
         // Connect rings vertically
         for (u32 i = 0; i < (latitude - 2); ++i) {
             u32 current_ring = 1 + i * longitude;
             u32 next_ring = current_ring + longitude;
-            IndexArray_push(&mesh->edge_indices, (u16)(current_ring + j));
-            IndexArray_push(&mesh->edge_indices, (u16)(next_ring + j));
+            IndexArray_push(&mesh->edge_indices, current_ring + j);
+            IndexArray_push(&mesh->edge_indices, next_ring + j);
         }
 
         // Last ring to bottom pole
         u32 last_ring = 1 + (latitude - 2) * longitude;
-        IndexArray_push(&mesh->edge_indices, (u16)(last_ring + j));
-        IndexArray_push(&mesh->edge_indices, (u16)(bottom_index));
+        IndexArray_push(&mesh->edge_indices, last_ring + j);
+        IndexArray_push(&mesh->edge_indices, bottom_index);
     }
 
     // Latitude rings (horizontal circles)
@@ -487,8 +479,8 @@ void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
         u32 ring_start = 1 + (i - 1) * longitude;
         for (u32 j = 0; j < longitude; ++j) {
             u32 next = (j + 1) % longitude;
-            IndexArray_push(&mesh->edge_indices, (u16)(ring_start + j));
-            IndexArray_push(&mesh->edge_indices, (u16)(ring_start + next));
+            IndexArray_push(&mesh->edge_indices, ring_start + j);
+            IndexArray_push(&mesh->edge_indices, ring_start + next);
         }
     }
 }
@@ -522,22 +514,22 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
         glm_vec3_copy(normal, top_vertex->normal);
     }
     // Add center vertices for caps
-    u16 bottom_center = (u16)mesh->vertices.count;
+    u32 bottom_center = mesh->vertices.count;
     Vertex* bottom_center_vertex =
         &mesh->vertices.items[mesh->vertices.count++];
     glm_vec3_copy((vec3){0.0f, 0.0f, 0.0f}, bottom_center_vertex->position);
     glm_vec3_copy((vec3){0.0f, -1.0f, 0.0f}, bottom_center_vertex->normal);
-    u16 top_center = (u16)mesh->vertices.count;
+    u32 top_center = mesh->vertices.count;
     Vertex* top_center_vertex = &mesh->vertices.items[mesh->vertices.count++];
     glm_vec3_copy((vec3){0.0f, height, 0.0f}, top_center_vertex->position);
     glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, top_center_vertex->normal);
     // Generate indices for side faces
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
-        u16 bottom_current = (u16)(i * 2);
-        u16 top_current = (u16)(i * 2 + 1);
-        u16 bottom_next = (u16)(next * 2);
-        u16 top_next = (u16)(next * 2 + 1);
+        u32 bottom_current = i * 2;
+        u32 top_current = i * 2 + 1;
+        u32 bottom_next = next * 2;
+        u32 top_next = next * 2 + 1;
         // First triangle
         IndexArray_push(&mesh->indices, bottom_current);
         IndexArray_push(&mesh->indices, top_current);
@@ -550,8 +542,8 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     // Generate indices for bottom cap (winding order matters for culling)
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
-        u16 bottom_current = (u16)(i * 2);
-        u16 bottom_next = (u16)(next * 2);
+        u32 bottom_current = i * 2;
+        u32 bottom_next = next * 2;
 
         IndexArray_push(&mesh->indices, bottom_center);
         IndexArray_push(&mesh->indices, bottom_next);
@@ -560,8 +552,8 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     // Generate indices for top cap
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
-        u16 top_current = (u16)(i * 2 + 1);
-        u16 top_next = (u16)(next * 2 + 1);
+        u32 top_current = i * 2 + 1;
+        u32 top_next = next * 2 + 1;
 
         IndexArray_push(&mesh->indices, top_center);
         IndexArray_push(&mesh->indices, top_current);
@@ -574,10 +566,10 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     /*
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
-        u16 bottom_current = (u16)(i * 2);
-        u16 top_current = (u16)(i * 2 + 1);
-        u16 bottom_next = (u16)(next * 2);
-        u16 top_next = (u16)(next * 2 + 1);
+        u32 bottom_current = i * 2;
+        u32 top_current = i * 2 + 1;
+        u32 bottom_next = next * 2;
+        u32 top_next = next * 2 + 1;
         // Bottom ring
         IndexArray_push(&mesh->edge_indices, bottom_current);
         IndexArray_push(&mesh->edge_indices, bottom_next);
@@ -590,10 +582,10 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     // This variant includes lengthwise lines
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
-        u16 bottom_current = (u16)(i * 2);
-        u16 top_current = (u16)(i * 2 + 1);
-        u16 bottom_next = (u16)(next * 2);
-        u16 top_next = (u16)(next * 2 + 1);
+        u32 bottom_current = i * 2;
+        u32 top_current = i * 2 + 1;
+        u32 bottom_next = next * 2;
+        u32 top_next = next * 2 + 1;
         // Bottom ring
         IndexArray_push(&mesh->edge_indices, bottom_current);
         IndexArray_push(&mesh->edge_indices, bottom_next);
@@ -637,13 +629,13 @@ void Mesh_create_cone(Mesh* mesh, u32 divisions) {
         glm_vec3_copy(normal, base_vertex->normal);
     }
     // Add tip vertex
-    u16 tip_index = (u16)mesh->vertices.count;
+    u32 tip_index = mesh->vertices.count;
     Vertex* tip_vertex = &mesh->vertices.items[mesh->vertices.count++];
     glm_vec3_copy((vec3){0.0f, height, 0.0f}, tip_vertex->position);
     // Tip normal - average of all side normals (points up and out)
     glm_vec3_copy((vec3){0.0f, 1.0f, 0.0f}, tip_vertex->normal);
     // Add base center vertex
-    u16 base_center = (u16)mesh->vertices.count;
+    u32 base_center = mesh->vertices.count;
     Vertex* base_center_vertex = &mesh->vertices.items[mesh->vertices.count++];
     glm_vec3_copy((vec3){0.0f, 0.0f, 0.0f}, base_center_vertex->position);
     glm_vec3_copy((vec3){0.0f, -1.0f, 0.0f}, base_center_vertex->normal);
@@ -651,29 +643,29 @@ void Mesh_create_cone(Mesh* mesh, u32 divisions) {
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
 
-        IndexArray_push(&mesh->indices, (u16)i);
+        IndexArray_push(&mesh->indices, i);
         IndexArray_push(&mesh->indices, tip_index);
-        IndexArray_push(&mesh->indices, (u16)next);
+        IndexArray_push(&mesh->indices, next);
     }
     // Generate indices for base cap
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
 
         IndexArray_push(&mesh->indices, base_center);
-        IndexArray_push(&mesh->indices, (u16)next);
-        IndexArray_push(&mesh->indices, (u16)i);
+        IndexArray_push(&mesh->indices, next);
+        IndexArray_push(&mesh->indices, i);
     }
     // Generate edge indices
     for (u32 i = 0; i < divisions; ++i) {
         u32 next = (i + 1) % divisions;
 
         // Base ring
-        IndexArray_push(&mesh->edge_indices, (u16)i);
-        IndexArray_push(&mesh->edge_indices, (u16)next);
+        IndexArray_push(&mesh->edge_indices, i);
+        IndexArray_push(&mesh->edge_indices, next);
 
         // Edge to tip (only every few divisions to avoid clutter)
         if (i % (divisions / 4) == 0) {
-            IndexArray_push(&mesh->edge_indices, (u16)i);
+            IndexArray_push(&mesh->edge_indices, i);
             IndexArray_push(&mesh->edge_indices, tip_index);
         }
     }

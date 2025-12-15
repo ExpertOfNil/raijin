@@ -1,9 +1,53 @@
 #define CIMPL_IMPLEMENTATION
 #include "cglm/mat4.h"
 #include "cimpl_glm.h"
-#include "mesh.h"
 #include "raijin.h"
 #include "renderer.h"
+
+MeshHandle register_triangle(Raijin* engine) {
+    // Create a custom triangle
+    Mesh triangle = {0};
+    // Add 3 vertices
+    Vertex va = {
+        .position = {1.0f, 0.0f, 0.0f},
+        .normal = {1.0f, 0.0f, 0.0f}
+    };
+    Vertex vb = {
+        .position = {0.0f, 1.0f, 0.0f},
+        .normal = {1.0f, 0.0f, 0.0f}
+    };
+    Vertex vc = {
+        .position = {0.0f, 0.0f, 1.0f},
+        .normal = {1.0f, 0.0f, 0.0f}
+    };
+    vec3 vba;
+    glm_vec3_sub(vb.position, va.position, vba);
+    vec3 vca;
+    glm_vec3_sub(vc.position, va.position, vca);
+    vec3 vn;
+    glm_vec3_cross(vba, vca, vn);
+    glm_vec3_copy(vn, va.normal);
+    glm_vec3_copy(vn, vb.normal);
+    glm_vec3_copy(vn, vc.normal);
+    // Add indices
+    IndexArray_push(&triangle.indices, 0);
+    IndexArray_push(&triangle.indices, 1);
+    IndexArray_push(&triangle.indices, 2);
+    // Optional: Add edge indices
+    IndexArray_push(&triangle.edge_indices, 0);
+    IndexArray_push(&triangle.edge_indices, 1);
+    IndexArray_push(&triangle.edge_indices, 1);
+    IndexArray_push(&triangle.edge_indices, 2);
+    IndexArray_push(&triangle.edge_indices, 2);
+    IndexArray_push(&triangle.edge_indices, 0);
+    // Register with engine
+    MeshHandle handle = Raijin_register_mesh(engine, &triangle);
+    // Clean up temp data (since registration copies it)
+    VertexArray_free(&triangle.vertices);
+    IndexArray_free(&triangle.indices);
+    IndexArray_free(&triangle.edge_indices);
+    return handle;
+}
 
 int main(void) {
     Raijin engine = {0};
@@ -95,6 +139,10 @@ int main(void) {
         (vec4){0.001f, 0.001f, 1.0f, 1.0f}
     );
 
+    MeshHandle tri = register_triangle(&engine);
+    Instance tri_instance = {.color = {1, 0, 0, 1}};
+    glm_mat4_identity(tri_instance.model_matrix);
+
     u32 buffer_size = width * height * 4;
     u8* output_buffer = malloc(buffer_size);
 
@@ -110,6 +158,7 @@ int main(void) {
     u32 frame_number = 0;
     while (!engine.window.should_close && frame_number < 20) {
         Raijin_draw_disc_instance(&engine, disc_instance);
+        Raijin_draw_mesh_instance(&engine, tri, tri_instance);
         Raijin_draw_sphere_uv_instance(&engine, sphere_instance);
         Raijin_draw_cylinder_instance(&engine, x_axis);
         Raijin_draw_cone_instance(&engine, x_axis_tip);

@@ -31,6 +31,18 @@ ReturnStatus Raijin_init(
     Raijin*, const char* title, u32 width, u32 height, RenderMode mode
 );
 void Raijin_handle_events(Raijin* engine);
+MeshHandle Raijin_register_mesh(Raijin* engine, Mesh* mesh);
+void Raijin_draw_mesh(
+    Raijin* engine,
+    MeshHandle mesh_handle,
+    vec3 position,
+    mat3 rotation,
+    f32 scale,
+    vec4 color
+);
+void Raijin_draw_mesh_instance(
+    Raijin* engine, MeshHandle mesh_handle, Instance instance
+);
 void Raijin_draw_cube(
     Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
 );
@@ -124,16 +136,49 @@ void Raijin_handle_events(Raijin* engine) {
     );
 }
 
-void Raijin_destroy(Raijin* engine) { SdlWindow_destroy(&engine->window); }
+void Raijin_destroy(Raijin* engine) {
+    Renderer_destroy(&engine->renderer);
+    SdlWindow_destroy(&engine->window);
+}
 // #endif
+
+MeshHandle Raijin_register_mesh(Raijin* engine, Mesh* mesh) {
+    return Renderer_register_mesh(&engine->renderer, mesh);
+}
 
 ReturnStatus Raijin_render(Raijin* engine) {
     return Renderer_render(&engine->renderer);
 }
 
+void Raijin_draw_mesh_instance(
+    Raijin* engine, MeshHandle mesh_handle, Instance instance
+) {
+    DrawCommand cmd = {
+        .mesh_handle = mesh_handle,
+        .instance = instance,
+    };
+    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+}
+
+void Raijin_draw_mesh(
+    Raijin* engine,
+    MeshHandle mesh_handle,
+    float* position,
+    vec3* rotation,
+    f32 scale,
+    float* color
+) {
+    Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
+    glm_mat4_identity(instance.model_matrix);
+    glm_mat4_ins3(rotation, instance.model_matrix);
+    glm_translate(instance.model_matrix, position);
+    glm_scale_uni(instance.model_matrix, scale);
+    Raijin_draw_mesh_instance(engine, mesh_handle, instance);
+}
+
 void Raijin_draw_cube_instance(Raijin* engine, Instance instance) {
     DrawCommand cmd = {
-        .mesh_type = MESH_TYPE_CUBE,
+        .mesh_handle = engine->renderer.builtin.cube,
         .instance = instance,
     };
     DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
@@ -152,7 +197,7 @@ void Raijin_draw_cube(
 
 void Raijin_draw_sphere_uv_instance(Raijin* engine, Instance instance) {
     DrawCommand cmd = {
-        .mesh_type = MESH_TYPE_SPHERE,
+        .mesh_handle = engine->renderer.builtin.sphere_uv,
         .instance = instance,
     };
     DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
@@ -171,7 +216,7 @@ void Raijin_draw_sphere_uv(
 
 void Raijin_draw_disc_instance(Raijin* engine, Instance instance) {
     DrawCommand cmd = {
-        .mesh_type = MESH_TYPE_DISC,
+        .mesh_handle = engine->renderer.builtin.disc,
         .instance = instance,
     };
     DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
@@ -190,7 +235,7 @@ void Raijin_draw_disc(
 
 void Raijin_draw_cylinder_instance(Raijin* engine, Instance instance) {
     DrawCommand cmd = {
-        .mesh_type = MESH_TYPE_CYLINDER,
+        .mesh_handle = engine->renderer.builtin.cylinder,
         .instance = instance,
     };
     DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
@@ -209,7 +254,7 @@ void Raijin_draw_cylinder(
 
 void Raijin_draw_cone_instance(Raijin* engine, Instance instance) {
     DrawCommand cmd = {
-        .mesh_type = MESH_TYPE_CONE,
+        .mesh_handle = engine->renderer.builtin.cone,
         .instance = instance,
     };
     DrawCommandArray_push(&engine->renderer.draw_commands, cmd);

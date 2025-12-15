@@ -18,7 +18,7 @@ typedef struct Uniform {
 } Uniform;
 
 typedef struct DrawCommand {
-    MeshType mesh_type;
+    MeshHandle mesh_handle;
     Instance instance;
 } DrawCommand;
 DEFINE_DYNAMIC_ARRAY(DrawCommand, DrawCommandArray)
@@ -64,12 +64,40 @@ typedef struct Renderer {
     WGPUTexture depth_texture;
     WGPUTextureView depth_texture_view;
     DrawCommandArray draw_commands;
-    Mesh meshes[MESH_TYPE_COUNT];
+    MeshArray meshes;
+    struct {
+        //MeshHandle triangle;
+        //MeshHandle tetrahedron;
+        MeshHandle cube;
+        MeshHandle sphere_uv;
+        MeshHandle disc;
+        MeshHandle cylinder;
+        MeshHandle cone;
+    } builtin;
 } Renderer;
 
 /* Function Prototypes */
 
 void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer);
+MeshHandle Renderer_register_mesh(Renderer* renderer, Mesh* mesh_template);
+void Renderer_create_depth_texture(
+    Renderer* renderer,
+    u32 width,
+    u32 height,
+    const char* label,
+    WGPUTextureFormat format
+);
+ReturnStatus Renderer_create_render_pipeline(
+    Renderer* renderer,
+    WGPURenderPipeline* pipeline,
+    const char* label,
+    const char* shader_path,
+    const WGPUTextureFormat texture_format,
+    const WGPUTextureFormat depth_texture_format,
+    const WGPUBindGroupLayout bind_group_layout,
+    const WGPUPrimitiveTopology topology,
+    const WGPUCullMode cull_mode
+);
 ReturnStatus Renderer_init_windowed(
     Renderer* renderer,
     const WGPUInstance instance,
@@ -82,10 +110,20 @@ ReturnStatus Renderer_init_headless(
 );
 void Renderer_render_mesh(
     Renderer* renderer,
-    const MeshType mesh_type,
+    const MeshHandle mesh_handle,
+    const WGPURenderPassEncoder render_pass_encoder
+);
+void Renderer_render_mesh_edges(
+    Renderer* renderer,
+    const MeshHandle mesh_handle,
     const WGPURenderPassEncoder render_pass_encoder
 );
 void Renderer_render_pass_solid(
+    Renderer* renderer,
+    const WGPUCommandEncoder command_encoder,
+    const WGPUTextureView texture_view
+);
+void Renderer_render_pass_edges(
     Renderer* renderer,
     const WGPUCommandEncoder command_encoder,
     const WGPUTextureView texture_view
@@ -99,8 +137,11 @@ void Renderer_handle_resize(Renderer* renderer, u32 width, u32 height);
 void Renderer_update_uniforms(
     Renderer* renderer, mat4 proj_matrix, mat4 view_matrix
 );
+ReturnStatus Renderer_copy_frame_to_buffer(
+    Renderer* renderer, u32 width, u32 height, u8* buffer, u32 buffer_capacity
+);
 
-static inline void adapter_request_callback(
+void adapter_request_callback(
     WGPURequestAdapterStatus status,
     WGPUAdapter adapter,
     WGPUStringView message,
@@ -108,7 +149,7 @@ static inline void adapter_request_callback(
     void* userdata2
 );
 
-static inline void device_request_callback(
+void device_request_callback(
     WGPURequestDeviceStatus status,
     WGPUDevice device,
     WGPUStringView message,
@@ -116,7 +157,7 @@ static inline void device_request_callback(
     void* userdata2
 );
 
-static inline void buffer_map_callback(
+void buffer_map_callback(
     WGPUMapAsyncStatus status,
     WGPUStringView message,
     void* userdata1,
@@ -150,7 +191,7 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
 
     mesh->index_buffer = create_buffer(
         renderer->device,
-        mesh->indices.count * sizeof(u16),
+        mesh->indices.count * sizeof(u32),
         WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
         "Index Buffer"
     );
@@ -160,7 +201,7 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         mesh->index_buffer,
         0,
         mesh->indices.items,
-        mesh->indices.count * sizeof(u16)
+        mesh->indices.count * sizeof(u32)
     );
 
     mesh->edge_instance_buffer = create_buffer(
@@ -172,7 +213,7 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
 
     mesh->edge_index_buffer = create_buffer(
         renderer->device,
-        mesh->edge_indices.count * sizeof(u16),
+        mesh->edge_indices.count * sizeof(u32),
         WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
         "Edge Index Buffer"
     );
@@ -182,8 +223,46 @@ void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         mesh->edge_index_buffer,
         0,
         mesh->edge_indices.items,
-        mesh->edge_indices.count * sizeof(u16)
+        mesh->edge_indices.count * sizeof(u32)
     );
+}
+
+MeshHandle Renderer_register_mesh(Renderer* renderer, Mesh* mesh_template) {
+    Mesh mesh = {0};
+    mesh.vertices = mesh_template->vertices;
+    mesh.indices = mesh_template->indices;
+    mesh.edge_indices = mesh_template->edge_indices;
+    mesh.instance_capacity = DEFAULT_INSTANCE_CAPACITY;
+    mesh.edge_instance_capacity = DEFAULT_INSTANCE_CAPACITY;
+
+    Renderer_create_mesh_buffers(&mesh, renderer);
+    MeshArray_push(&renderer->meshes, mesh);
+    // Handle = index
+    return renderer->meshes.count - 1;
+}
+
+static void Renderer_register_builtin_meshes(Renderer* renderer) {
+    // TODO (mmckenna): missing TRIANGLE
+    // TODO (mmckenna): missing TETRAHEDRON
+    Mesh cube_mesh = {0};
+    Mesh_create_cube(&cube_mesh);
+    renderer->builtin.cube = Renderer_register_mesh(renderer, &cube_mesh);
+
+    Mesh sphere_uv_mesh = {0};
+    Mesh_create_sphere_uv(&sphere_uv_mesh, 16);
+    renderer->builtin.sphere_uv = Renderer_register_mesh(renderer, &sphere_uv_mesh);
+
+    Mesh disc_mesh = {0};
+    Mesh_create_disc(&disc_mesh, 32);
+    renderer->builtin.disc = Renderer_register_mesh(renderer, &disc_mesh);
+
+    Mesh cylinder_mesh = {0};
+    Mesh_create_cylinder(&cylinder_mesh, 16);
+    renderer->builtin.cylinder = Renderer_register_mesh(renderer, &cylinder_mesh);
+
+    Mesh cone_mesh = {0};
+    Mesh_create_cone(&cone_mesh, 16);
+    renderer->builtin.cone = Renderer_register_mesh(renderer, &cone_mesh);
 }
 
 void Renderer_create_depth_texture(
@@ -458,18 +537,7 @@ ReturnStatus Renderer_init_windowed(
         wgpuDeviceCreateBuffer(renderer->device, &uniform_buffer_desc);
 
     // Create meshes
-    Mesh_create_cube(&renderer->meshes[MESH_TYPE_CUBE]);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CUBE], renderer);
-    Mesh_create_sphere_uv(&renderer->meshes[MESH_TYPE_SPHERE], 16);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_SPHERE], renderer);
-    Mesh_create_disc(&renderer->meshes[MESH_TYPE_DISC], 32);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_DISC], renderer);
-    Mesh_create_cylinder(&renderer->meshes[MESH_TYPE_CYLINDER], 16);
-    Renderer_create_mesh_buffers(
-        &renderer->meshes[MESH_TYPE_CYLINDER], renderer
-    );
-    Mesh_create_cone(&renderer->meshes[MESH_TYPE_CONE], 16);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CONE], renderer);
+    Renderer_register_builtin_meshes(renderer);
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry bind_group_layout_entries[] = {
@@ -609,7 +677,7 @@ ReturnStatus Renderer_init_headless(
 
     // Create render target
     // TODO (mmckenna) : Look at different formats, including `Bgra8UnormSrgb`
-    //WGPUTextureFormat texture_format = WGPUTextureFormat_RGBA8Unorm;
+    // WGPUTextureFormat texture_format = WGPUTextureFormat_RGBA8Unorm;
     WGPUTextureFormat texture_format = WGPUTextureFormat_RGBA8UnormSrgb;
     WGPUTextureDescriptor texture_desc = {
         .label = {"Headless Texture", WGPU_STRLEN},
@@ -654,18 +722,7 @@ ReturnStatus Renderer_init_headless(
         wgpuDeviceCreateBuffer(renderer->device, &uniform_buffer_desc);
 
     // Create meshes
-    Mesh_create_cube(&renderer->meshes[MESH_TYPE_CUBE]);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CUBE], renderer);
-    Mesh_create_sphere_uv(&renderer->meshes[MESH_TYPE_SPHERE], 16);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_SPHERE], renderer);
-    Mesh_create_disc(&renderer->meshes[MESH_TYPE_DISC], 32);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_DISC], renderer);
-    Mesh_create_cylinder(&renderer->meshes[MESH_TYPE_CYLINDER], 16);
-    Renderer_create_mesh_buffers(
-        &renderer->meshes[MESH_TYPE_CYLINDER], renderer
-    );
-    Mesh_create_cone(&renderer->meshes[MESH_TYPE_CONE], 16);
-    Renderer_create_mesh_buffers(&renderer->meshes[MESH_TYPE_CONE], renderer);
+    Renderer_register_builtin_meshes(renderer);
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry bind_group_layout_entries[] = {
@@ -744,14 +801,14 @@ ReturnStatus Renderer_init_headless(
 // TODO (mmckenna): Target for arena allocator
 void Renderer_render_mesh(
     Renderer* renderer,
-    const MeshType mesh_type,
+    const MeshHandle mesh_handle,
     const WGPURenderPassEncoder render_pass_encoder
 ) {
     InstanceArray instances;
     InstanceArray_init(&instances);
     for (u32 i = 0; i < renderer->draw_commands.count; ++i) {
         DrawCommand* cmd = &renderer->draw_commands.items[i];
-        if (cmd->mesh_type == mesh_type) {
+        if (cmd->mesh_handle == mesh_handle) {
             InstanceArray_push(&instances, cmd->instance);
         }
     }
@@ -761,7 +818,7 @@ void Renderer_render_mesh(
         return;
     }
 
-    Mesh* mesh = &renderer->meshes[mesh_type];
+    Mesh* mesh = &renderer->meshes.items[mesh_handle];
     if (instances.count > mesh->instance_capacity) {
         Mesh_realloc_instance_buffer(mesh, renderer->device, instances.count);
     }
@@ -789,9 +846,9 @@ void Renderer_render_mesh(
     wgpuRenderPassEncoderSetIndexBuffer(
         render_pass_encoder,
         mesh->index_buffer,
-        WGPUIndexFormat_Uint16,
+        WGPUIndexFormat_Uint32,
         0,
-        mesh->indices.count * sizeof(u16)
+        mesh->indices.count * sizeof(u32)
     );
     wgpuRenderPassEncoderDrawIndexed(
         render_pass_encoder, mesh->indices.count, instances.count, 0, 0, 0
@@ -802,14 +859,14 @@ void Renderer_render_mesh(
 // TODO (mmckenna): Target for arena allocator
 void Renderer_render_mesh_edges(
     Renderer* renderer,
-    const MeshType mesh_type,
+    const MeshHandle mesh_handle,
     const WGPURenderPassEncoder render_pass_encoder
 ) {
     InstanceArray instances;
     InstanceArray_init(&instances);
     for (u32 i = 0; i < renderer->draw_commands.count; ++i) {
         DrawCommand* cmd = &renderer->draw_commands.items[i];
-        if (cmd->mesh_type == mesh_type) {
+        if (cmd->mesh_handle == mesh_handle) {
             Instance instance = {0};
             memcpy(&instance, &cmd->instance, sizeof(instance));
             glm_vec4_one(instance.color);
@@ -822,7 +879,7 @@ void Renderer_render_mesh_edges(
         return;
     }
 
-    Mesh* mesh = &renderer->meshes[mesh_type];
+    Mesh* mesh = &renderer->meshes.items[mesh_handle];
     if (instances.count > mesh->edge_instance_capacity) {
         Mesh_realloc_edge_instance_buffer(
             mesh, renderer->device, instances.count
@@ -854,7 +911,7 @@ void Renderer_render_mesh_edges(
         mesh->edge_index_buffer,
         WGPUIndexFormat_Uint16,
         0,
-        mesh->edge_indices.count * sizeof(u16)
+        mesh->edge_indices.count * sizeof(u32)
     );
     wgpuRenderPassEncoderDrawIndexed(
         render_pass_encoder, mesh->edge_indices.count, instances.count, 0, 0, 0
@@ -899,46 +956,12 @@ void Renderer_render_pass_solid(
     wgpuRenderPassEncoderSetBindGroup(
         render_pass_encoder, 0, renderer->uniform_bind_group, 0, NULL
     );
-    // TODO (mmckenna) : render mesh instances
-    for (u32 i = 0; i < MESH_TYPE_COUNT; ++i) {
-        switch (i) {
-            case MESH_TYPE_TRIANGLE: {
-                Renderer_render_mesh(
-                    renderer, MESH_TYPE_TRIANGLE, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_CUBE: {
-                Renderer_render_mesh(
-                    renderer, MESH_TYPE_CUBE, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_TETRAHEDRON: {
-                Renderer_render_mesh(
-                    renderer, MESH_TYPE_TETRAHEDRON, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_SPHERE: {
-                Renderer_render_mesh(
-                    renderer, MESH_TYPE_SPHERE, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_DISC: {
-                Renderer_render_mesh(
-                    renderer, MESH_TYPE_DISC, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_CYLINDER: {
-                Renderer_render_mesh(
-                    renderer, MESH_TYPE_CYLINDER, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_CONE: {
-                Renderer_render_mesh(
-                    renderer, MESH_TYPE_CONE, render_pass_encoder
-                );
-            } break;
-        }
+
+    // Render all meshes
+    for (u32 i = 0; i < renderer->meshes.count; ++i) {
+        Renderer_render_mesh(renderer, i, render_pass_encoder);
     }
+
     wgpuRenderPassEncoderEnd(render_pass_encoder);
     wgpuRenderPassEncoderRelease(render_pass_encoder);
     return;
@@ -981,46 +1004,12 @@ void Renderer_render_pass_edges(
     wgpuRenderPassEncoderSetBindGroup(
         render_pass_encoder, 0, renderer->uniform_bind_group, 0, NULL
     );
-    // TODO (mmckenna) : render mesh instances
-    for (u32 i = 0; i < MESH_TYPE_COUNT; ++i) {
-        switch (i) {
-            case MESH_TYPE_TRIANGLE: {
-                Renderer_render_mesh_edges(
-                    renderer, MESH_TYPE_TRIANGLE, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_CUBE: {
-                Renderer_render_mesh_edges(
-                    renderer, MESH_TYPE_CUBE, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_TETRAHEDRON: {
-                Renderer_render_mesh_edges(
-                    renderer, MESH_TYPE_TETRAHEDRON, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_SPHERE: {
-                Renderer_render_mesh_edges(
-                    renderer, MESH_TYPE_SPHERE, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_DISC: {
-                Renderer_render_mesh_edges(
-                    renderer, MESH_TYPE_DISC, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_CYLINDER: {
-                Renderer_render_mesh_edges(
-                    renderer, MESH_TYPE_CYLINDER, render_pass_encoder
-                );
-            } break;
-            case MESH_TYPE_CONE: {
-                Renderer_render_mesh_edges(
-                    renderer, MESH_TYPE_CONE, render_pass_encoder
-                );
-            } break;
-        }
+
+    // Render all meshes
+    for (u32 i = 0; i < renderer->meshes.count; ++i) {
+        Renderer_render_mesh_edges(renderer, i, render_pass_encoder);
     }
+
     wgpuRenderPassEncoderEnd(render_pass_encoder);
     wgpuRenderPassEncoderRelease(render_pass_encoder);
     return;
@@ -1125,6 +1114,22 @@ ReturnStatus Renderer_render(Renderer* renderer) {
 }
 
 void Renderer_destroy(Renderer* renderer) {
+    for (u32 i = 0; i < renderer->meshes.count; ++i) {
+        Mesh* mesh = &renderer->meshes.items[i];
+        if (mesh->vertex_buffer != NULL) wgpuBufferRelease(mesh->vertex_buffer);
+        if (mesh->index_buffer != NULL) wgpuBufferRelease(mesh->index_buffer);
+        if (mesh->instance_buffer != NULL)
+            wgpuBufferRelease(mesh->instance_buffer);
+        if (mesh->edge_index_buffer != NULL)
+            wgpuBufferRelease(mesh->edge_index_buffer);
+        if (mesh->edge_instance_buffer != NULL)
+            wgpuBufferRelease(mesh->edge_instance_buffer);
+        VertexArray_free(&mesh->vertices);
+        IndexArray_free(&mesh->indices);
+        IndexArray_free(&mesh->edge_indices);
+    }
+    MeshArray_free(&renderer->meshes);
+
     if (renderer->uniform_buffer != NULL) {
         wgpuBufferRelease(renderer->uniform_buffer);
     }
@@ -1334,7 +1339,7 @@ ReturnStatus Renderer_copy_frame_to_buffer(
 
 /* WGPU callback functions */
 
-static inline void adapter_request_callback(
+void adapter_request_callback(
     WGPURequestAdapterStatus status,
     WGPUAdapter adapter,
     WGPUStringView message,
@@ -1355,7 +1360,7 @@ static inline void adapter_request_callback(
     }
 }
 
-static inline void device_request_callback(
+void device_request_callback(
     WGPURequestDeviceStatus status,
     WGPUDevice device,
     WGPUStringView message,
@@ -1376,7 +1381,7 @@ static inline void device_request_callback(
     }
 }
 
-static inline void buffer_map_callback(
+void buffer_map_callback(
     WGPUMapAsyncStatus status,
     WGPUStringView message,
     void* userdata1,
