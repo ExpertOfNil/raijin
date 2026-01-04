@@ -18,7 +18,8 @@ int main(int argc, char** argv) {
         "-Iinclude",
         "-Ilib/wgpu/include",
         "-Ilib/cglm/include",
-        "-Ilib/cimpl/include"
+        "-Ilib/cimpl/include",
+        "-Ilib/tinyobjloader"
     );
     nob_cmd_append(&cmd, SRC_DIR "main.c");
     nob_cmd_append(&cmd, "-o", BUILD_DIR "raijin");
@@ -34,7 +35,8 @@ int main(int argc, char** argv) {
         "-Iinclude",
         "-Ilib/wgpu/include",
         "-Ilib/cglm/include",
-        "-Ilib/cimpl/include"
+        "-Ilib/cimpl/include",
+        "-Ilib/tinyobjloader"
     );
     nob_cmd_append(&cmd, SRC_DIR "main_headless.c");
     nob_cmd_append(&cmd, "-o", BUILD_DIR "raijin_headless");

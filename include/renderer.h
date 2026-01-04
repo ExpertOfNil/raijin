@@ -4,6 +4,7 @@
 #include "cglm/cglm.h"
 #include "cglm/mat4.h"
 #include "cglm/vec3.h"
+#include "cimpl_core.h"
 #include "core.h"
 #include "mesh.h"
 #include "webgpu.h"
@@ -66,8 +67,8 @@ typedef struct Renderer {
     DrawCommandArray draw_commands;
     MeshArray meshes;
     struct {
-        //MeshHandle triangle;
-        //MeshHandle tetrahedron;
+        // MeshHandle triangle;
+        // MeshHandle tetrahedron;
         MeshHandle cube;
         MeshHandle sphere_uv;
         MeshHandle disc;
@@ -250,7 +251,8 @@ static void Renderer_register_builtin_meshes(Renderer* renderer) {
 
     Mesh sphere_uv_mesh = {0};
     Mesh_create_sphere_uv(&sphere_uv_mesh, 16);
-    renderer->builtin.sphere_uv = Renderer_register_mesh(renderer, &sphere_uv_mesh);
+    renderer->builtin.sphere_uv =
+        Renderer_register_mesh(renderer, &sphere_uv_mesh);
 
     Mesh disc_mesh = {0};
     Mesh_create_disc(&disc_mesh, 32);
@@ -258,7 +260,8 @@ static void Renderer_register_builtin_meshes(Renderer* renderer) {
 
     Mesh cylinder_mesh = {0};
     Mesh_create_cylinder(&cylinder_mesh, 16);
-    renderer->builtin.cylinder = Renderer_register_mesh(renderer, &cylinder_mesh);
+    renderer->builtin.cylinder =
+        Renderer_register_mesh(renderer, &cylinder_mesh);
 
     Mesh cone_mesh = {0};
     Mesh_create_cone(&cone_mesh, 16);

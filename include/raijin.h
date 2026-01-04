@@ -67,6 +67,8 @@ ReturnStatus Raijin_copy_frame_to_buffer(
     Raijin* engine, u32 width, u32 height, u8* buffer, u32 buffer_capacity
 );
 
+MeshHandle Raijin_load_mesh_obj(Raijin* engine, const char* filepath);
+
 void Raijin_destroy(Raijin* engine);
 
 /* Function */
@@ -277,6 +279,24 @@ ReturnStatus Raijin_copy_frame_to_buffer(
     return Renderer_copy_frame_to_buffer(
         &engine->renderer, width, height, buffer, buffer_capacity
     );
+}
+
+MeshHandle Raijin_load_mesh_obj(Raijin* engine, const char* filepath) {
+    Mesh mesh = {0};
+    ReturnStatus status = Mesh_load_from_obj(&mesh, filepath);
+
+    if (status != RETURN_SUCCESS) {
+        return INVALID_MESH_HANDLE;
+    }
+
+    MeshHandle handle = Raijin_register_mesh(engine, &mesh);
+
+    // Free temporary mesh data (registration copied it)
+    VertexArray_free(&mesh.vertices);
+    IndexArray_free(&mesh.indices);
+    IndexArray_free(&mesh.edge_indices);
+
+    return handle;
 }
 
 #endif /* RAIJIN_H */

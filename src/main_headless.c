@@ -1,4 +1,5 @@
 #define CIMPL_IMPLEMENTATION
+#define MESH_LOADER_IMPLEMENTATION
 #include "cglm/mat4.h"
 #include "cimpl_glm.h"
 #include "raijin.h"

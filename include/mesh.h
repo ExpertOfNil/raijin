@@ -7,6 +7,10 @@
 #include "cimpl_core.h"
 #include "cimpl_glm.h"
 #include "core.h"
+#ifdef MESH_LOADER_IMPLEMENTATION
+#define TINYOBJ_LOADER_C_IMPLEMENTATION
+#endif
+#include "tinyobj_loader_c.h"
 #include "webgpu.h"
 
 #define DEFAULT_INSTANCE_CAPACITY 256
@@ -669,6 +673,204 @@ void Mesh_create_cone(Mesh* mesh, u32 divisions) {
             IndexArray_push(&mesh->edge_indices, tip_index);
         }
     }
+}
+
+static void tinyobj_file_reader(
+    void* ctx,
+    const char* filename,
+    int is_mtl,
+    const char* obj_filename,
+    char** buf,
+    size_t* len
+) {
+    (void)ctx;           // Unused
+    (void)is_mtl;        // We don't support materials yet
+    (void)obj_filename;  // Unused
+
+    FILE* file = fopen(filename, "rb");
+    if (!file) {
+        log_error("Failed to open file: %s", filename);
+        *buf = NULL;
+        *len = 0;
+        return;
+    }
+
+    // Get file size
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    if (file_size < 0) {
+        log_error("Failed to get file size: %s", filename);
+        fclose(file);
+        *buf = NULL;
+        *len = 0;
+        return;
+    }
+
+    // Allocate buffer
+    *buf = (char*)malloc(file_size + 1);
+    if (!*buf) {
+        log_error("Failed to allocate memory for file: %s", filename);
+        fclose(file);
+        *len = 0;
+        return;
+    }
+
+    // Read file
+    size_t read_size = fread(*buf, 1, file_size, file);
+    (*buf)[read_size] = '\0';  // Null terminate
+    *len = read_size;
+
+    fclose(file);
+}
+
+ReturnStatus Mesh_load_from_obj(Mesh* mesh, const char* filepath) {
+    tinyobj_attrib_t attrib;
+    tinyobj_shape_t* shapes = NULL;
+    size_t num_shapes;
+    tinyobj_material_t* materials = NULL;
+    size_t num_materials;
+
+    log_debug("Loading OBJ file: %s", filepath);
+
+    // Parse OBJ file
+    unsigned int flags = TINYOBJ_FLAG_TRIANGULATE;  // Auto-triangulate quads
+    int ret = tinyobj_parse_obj(
+        &attrib,
+        &shapes,
+        &num_shapes,
+        &materials,
+        &num_materials,
+        filepath,
+        tinyobj_file_reader,
+        NULL,  // No context needed
+        flags
+    );
+
+    if (ret != TINYOBJ_SUCCESS) {
+        log_error(
+            "Failed to parse OBJ file: %s (error code: %d)", filepath, ret
+        );
+        return RETURN_FAILURE;
+    }
+
+    // Validate we have data
+    if (attrib.num_vertices == 0) {
+        log_error("OBJ file has no vertices: %s", filepath);
+        tinyobj_attrib_free(&attrib);
+        tinyobj_shapes_free(shapes, num_shapes);
+        tinyobj_materials_free(materials, num_materials);
+        return RETURN_FAILURE;
+    }
+
+    if (attrib.num_faces == 0) {
+        log_error("OBJ file has no faces: %s", filepath);
+        tinyobj_attrib_free(&attrib);
+        tinyobj_shapes_free(shapes, num_shapes);
+        tinyobj_materials_free(materials, num_materials);
+        return RETURN_FAILURE;
+    }
+
+    // Check for normals (required for now)
+    if (attrib.num_normals == 0) {
+        log_error("OBJ file has no normals (required): %s", filepath);
+        tinyobj_attrib_free(&attrib);
+        tinyobj_shapes_free(shapes, num_shapes);
+        tinyobj_materials_free(materials, num_materials);
+        return RETURN_FAILURE;
+    }
+
+    // Initialize mesh arrays
+    VertexArray_init(&mesh->vertices);
+    IndexArray_init(&mesh->indices);
+    IndexArray_init(&mesh->edge_indices);  // Empty for now
+
+    // Convert tinyobj data to our vertex format
+    // Process each face and create vertices
+    u32 face_idx_offset = 0;
+    u32 vertex_count = 0;
+
+    for (size_t f = 0; f < attrib.num_face_num_verts; f++) {
+        int num_verts = attrib.face_num_verts[f];
+
+        // Should always be 3 due to TINYOBJ_FLAG_TRIANGULATE
+        if (num_verts != 3) {
+            log_warn(
+                "Face %zu has %d vertices (expected 3), skipping", f, num_verts
+            );
+            face_idx_offset += num_verts;
+            continue;
+        }
+
+        // Process 3 vertices of this triangle
+        for (int v = 0; v < 3; v++) {
+            tinyobj_vertex_index_t idx = attrib.faces[face_idx_offset + v];
+
+            // Validate indices
+            if (idx.v_idx < 0 || (size_t)idx.v_idx >= attrib.num_vertices) {
+                log_error("Invalid vertex index %d at face %zu", idx.v_idx, f);
+                goto cleanup_error;
+            }
+
+            if (idx.vn_idx < 0 || (size_t)idx.vn_idx >= attrib.num_normals) {
+                log_error("Invalid normal index %d at face %zu", idx.vn_idx, f);
+                goto cleanup_error;
+            }
+
+            // Create vertex
+            Vertex vertex = {0};
+
+            // Position (3 floats per vertex)
+            vertex.position[0] = attrib.vertices[3 * idx.v_idx + 0];
+            vertex.position[1] = attrib.vertices[3 * idx.v_idx + 1];
+            vertex.position[2] = attrib.vertices[3 * idx.v_idx + 2];
+
+            // Normal (3 floats per normal)
+            vertex.normal[0] = attrib.normals[3 * idx.vn_idx + 0];
+            vertex.normal[1] = attrib.normals[3 * idx.vn_idx + 1];
+            vertex.normal[2] = attrib.normals[3 * idx.vn_idx + 2];
+
+            // Default color (white)
+            vertex.color[0] = 1.0f;
+            vertex.color[1] = 1.0f;
+            vertex.color[2] = 1.0f;
+
+            VertexArray_push(&mesh->vertices, vertex);
+        }
+
+        // Add indices (sequential since we're creating unique vertices per
+        // face)
+        IndexArray_push(&mesh->indices, vertex_count + 0);
+        IndexArray_push(&mesh->indices, vertex_count + 1);
+        IndexArray_push(&mesh->indices, vertex_count + 2);
+
+        vertex_count += 3;
+        face_idx_offset += num_verts;
+    }
+
+    log_info(
+        "Loaded OBJ: %u vertices, %u triangles from %s",
+        mesh->vertices.count,
+        mesh->indices.count / 3,
+        filepath
+    );
+
+    // Cleanup tinyobj data
+    tinyobj_attrib_free(&attrib);
+    tinyobj_shapes_free(shapes, num_shapes);
+    tinyobj_materials_free(materials, num_materials);
+
+    return RETURN_SUCCESS;
+
+cleanup_error:
+    VertexArray_free(&mesh->vertices);
+    IndexArray_free(&mesh->indices);
+    IndexArray_free(&mesh->edge_indices);
+    tinyobj_attrib_free(&attrib);
+    tinyobj_shapes_free(shapes, num_shapes);
+    tinyobj_materials_free(materials, num_materials);
+    return RETURN_FAILURE;
 }
 
 #endif /* MESH_H */

@@ -1,7 +1,7 @@
 [
   {
     "arguments": [
-      "/usr/sbin/clang",
+      "/usr/bin/clang",
       "-c",
       "-std=c99",
       "-Wall",
@@ -13,21 +13,23 @@
       "-Ilib/wgpu/include",
       "-Ilib/cglm/include",
       "-Ilib/cimpl/include",
+      "-Ilib/tinyobjloader",
       "-o",
       "build/raijin",
       "src/main.c"
     ],
-    "directory": "/home/unicron/Dev/c/raijin",
-    "file": "/home/unicron/Dev/c/raijin/src/main.c",
-    "output": "/home/unicron/Dev/c/raijin/build/raijin"
+    "directory": "/home/mmckenna/Dev/c/raijin",
+    "file": "/home/mmckenna/Dev/c/raijin/src/main.c",
+    "output": "/home/mmckenna/Dev/c/raijin/build/raijin"
   },
   {
     "arguments": [
-      "/usr/bin/clang-20",
+      "/usr/lib/llvm-18/bin/clang",
       "-cc1",
       "-triple",
       "x86_64-pc-linux-gnu",
       "-emit-obj",
+      "-mrelax-all",
       "-dumpdir",
       "build/raijin-",
       "-disable-free",
@@ -53,10 +55,10 @@
       "-debug-info-kind=constructor",
       "-dwarf-version=5",
       "-debugger-tuning=gdb",
-      "-fdebug-compilation-dir=/home/unicron/Dev/c/raijin",
-      "-fcoverage-compilation-dir=/home/unicron/Dev/c/raijin",
+      "-fdebug-compilation-dir=/home/mmckenna/Dev/c/raijin",
+      "-fcoverage-compilation-dir=/home/mmckenna/Dev/c/raijin",
       "-resource-dir",
-      "/usr/lib/clang/20",
+      "/usr/lib/llvm-18/lib/clang/18",
       "-I",
       "include",
       "-I",
@@ -65,12 +67,16 @@
       "lib/cglm/include",
       "-I",
       "lib/cimpl/include",
+      "-I",
+      "lib/tinyobjloader",
       "-internal-isystem",
-      "/usr/lib/clang/20/include",
+      "/usr/lib/llvm-18/lib/clang/18/include",
       "-internal-isystem",
       "/usr/local/include",
       "-internal-isystem",
-      "/usr/bin/../lib64/gcc/x86_64-pc-linux-gnu/15.2.1/../../../../x86_64-pc-linux-gnu/include",
+      "/usr/bin/../lib/gcc/x86_64-linux-gnu/13/../../../../x86_64-linux-gnu/include",
+      "-internal-externc-isystem",
+      "/usr/include/x86_64-linux-gnu",
       "-internal-externc-isystem",
       "/include",
       "-internal-externc-isystem",
@@ -82,8 +88,6 @@
       "-std=c99",
       "-ferror-limit",
       "19",
-      "-stack-protector",
-      "2",
       "-fgnuc-version=4.2.1",
       "-fskip-odr-check-in-gmf",
       "-fcolor-diagnostics",
@@ -92,11 +96,11 @@
       "-x",
       "c",
       "-o",
-      "/tmp/main-aa825a.o",
+      "/tmp/main-cbe8cc.o",
       "src/main.c"
     ],
-    "directory": "/home/unicron/Dev/c/raijin",
-    "file": "/home/unicron/Dev/c/raijin/src/main.c",
-    "output": "/tmp/main-aa825a.o"
+    "directory": "/home/mmckenna/Dev/c/raijin",
+    "file": "/home/mmckenna/Dev/c/raijin/src/main.c",
+    "output": "/tmp/main-cbe8cc.o"
   }
 ]

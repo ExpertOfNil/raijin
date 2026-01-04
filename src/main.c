@@ -1,5 +1,5 @@
 #define CIMPL_IMPLEMENTATION
-#include "cimpl_glm.h"
+#define MESH_LOADER_IMPLEMENTATION
 #include "raijin.h"
 
 MeshHandle register_triangle(Raijin* engine) {
@@ -75,7 +75,7 @@ int main(void) {
     glm_scale_uni(cube_instances[2].model_matrix, 0.2f);
 
     Instance sphere_instance = {
-        .color = {1.0, 0.0, 1.0, 1.0},
+        .color = {1.0, 1.0, 1.0, 1.0},
     };
     glm_mat4_identity(sphere_instance.model_matrix);
     glm_translate(sphere_instance.model_matrix, (vec3){0.0f, 0.0f, 0.0f});
@@ -146,6 +146,14 @@ int main(void) {
     Instance tri_instance = {.color = {1, 0, 0, 1}};
     glm_mat4_identity(tri_instance.model_matrix);
 
+    const char* fname = "assets/doom.obj";
+    MeshHandle gnomon = Raijin_load_mesh_obj(&engine, fname);
+    if (gnomon == INVALID_MESH_HANDLE) {
+        log_error("Failed to load %s\n", fname);
+    } else {
+        log_error("Success loading %s, handle: %u\n", fname, gnomon);
+    }
+
     PanOrbitCamera_orbit(
         &engine.camera, (vec2){-314.159f * 1.5f, 314.159f / 2.0f}
     );
@@ -155,8 +163,17 @@ int main(void) {
 
     while (!engine.window.should_close) {
         Raijin_handle_events(&engine);
-        Raijin_draw_mesh_instance(&engine, tri, tri_instance);
-        Raijin_draw_disc_instance(&engine, disc_instance);
+        if (gnomon != INVALID_MESH_HANDLE) {
+            Instance gnomon_inst = {.color = {0.021f, 0.219f, 0.145f, 1.0f}};
+            glm_mat4_identity(gnomon_inst.model_matrix);
+            glm_translate(gnomon_inst.model_matrix, (vec3){0.0f, 0.0f, 0.0f});
+            glm_scale_uni(
+                gnomon_inst.model_matrix, 0.01f
+            );  // Scale to reasonable size
+            Raijin_draw_mesh_instance(&engine, gnomon, gnomon_inst);
+        }
+        //Raijin_draw_mesh_instance(&engine, tri, tri_instance);
+        //Raijin_draw_disc_instance(&engine, disc_instance);
         Raijin_draw_sphere_uv_instance(&engine, sphere_instance);
         Raijin_draw_cylinder_instance(&engine, x_axis);
         Raijin_draw_cone_instance(&engine, x_axis_tip);
