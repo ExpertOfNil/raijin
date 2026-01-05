@@ -10,14 +10,17 @@ MeshHandle register_triangle(Raijin* engine) {
     // Add 3 vertices
     Vertex va = {
         .position = {1.0f, 0.0f, 0.0f},
+        .color = {1.0f, 0.0f, 0.0f},
         .normal = {1.0f, 0.0f, 0.0f}
     };
     Vertex vb = {
         .position = {0.0f, 1.0f, 0.0f},
+        .color = {0.0f, 1.0f, 0.0f},
         .normal = {1.0f, 0.0f, 0.0f}
     };
     Vertex vc = {
         .position = {0.0f, 0.0f, 1.0f},
+        .color = {0.0f, 0.0f, 1.0f},
         .normal = {1.0f, 0.0f, 0.0f}
     };
     vec3 vba;
@@ -29,6 +32,10 @@ MeshHandle register_triangle(Raijin* engine) {
     glm_vec3_copy(vn, va.normal);
     glm_vec3_copy(vn, vb.normal);
     glm_vec3_copy(vn, vc.normal);
+    VertexArray_push(&triangle.vertices, va);
+    VertexArray_push(&triangle.vertices, vb);
+    VertexArray_push(&triangle.vertices, vc);
+    // ... add 2 more vertices
     // Add indices
     IndexArray_push(&triangle.indices, 0);
     IndexArray_push(&triangle.indices, 1);
@@ -71,13 +78,6 @@ int main(void) {
     glm_translate(cube_instances[2].model_matrix, (vec3){0.0f, 0.0f, 4.0f});
     glm_scale_uni(cube_instances[2].model_matrix, 0.2f);
 
-    Instance sphere_instance = {
-        .color = {1.0, 0.0, 1.0, 1.0},
-    };
-    glm_mat4_identity(sphere_instance.model_matrix);
-    glm_translate(sphere_instance.model_matrix, (vec3){0.0f, 0.0f, 0.0f});
-    glm_scale_uni(sphere_instance.model_matrix, 0.2f);
-
     Instance disc_instance = {
         .color = {1.0, 1.0, 1.0, 1.0},
     };
@@ -88,56 +88,55 @@ int main(void) {
     );
     glm_scale_uni(disc_instance.model_matrix, 0.5f);
 
-    f32 line_r = 0.05f;
-    f32 cone_r = line_r * 1.5f;
-    Instance x_axis;
-    Instance_from_line(
-        &x_axis,
-        (vec3){0.0f, 0.0f, 0.0f},
-        (vec3){4.0f, 0.0f, 0.0f},
-        line_r,
-        (vec4){1.0f, 0.0f, 0.0f, 1.0f}
+    AssemblyHandle axis_assy = Raijin_create_axis(&engine, 4.0f, 0.05f, true);
+
+    Instance global_axis = {
+        .color = {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    glm_mat4_identity(global_axis.model_matrix);
+
+    vec4 rot_x, rot_y, rot_z;
+    glm_quatv(rot_x, GLM_PI_4, GLM_XUP);
+    glm_quatv(rot_y, GLM_PI_4, GLM_YUP);
+    glm_quatv(rot_z, GLM_PI_4, GLM_ZUP);
+
+    vec4 camera_rot;
+    glm_quat_mul(rot_z, rot_y, camera_rot);
+    glm_quat_mul(camera_rot, rot_x, camera_rot);
+
+    vec3 camera_pos = {4.0f, 4.0f, 4.0f};
+    f32 camera_scale = 0.5f;
+
+    Instance camera_axis = {
+        .color = {0.1f, 0.1f, 0.1f, 1.0f},
+    };
+    glm_mat4_identity(camera_axis.model_matrix);
+    glm_translate(camera_axis.model_matrix, camera_pos);
+    glm_quat_rotate(
+        camera_axis.model_matrix, camera_rot, camera_axis.model_matrix
     );
-    Instance x_axis_tip;
-    Instance_from_line(
-        &x_axis_tip,
-        (vec3){4.0f, 0.0f, 0.0f},
-        (vec3){4.5f, 0.0f, 0.0f},
-        cone_r,
-        (vec4){1.0f, 0.0f, 0.0f, 1.0f}
+    glm_scale_uni(camera_axis.model_matrix, camera_scale);
+
+    AssemblyHandle frustum = Raijin_create_frustum(
+        &engine,
+        engine.camera.proj_matrix,
+        0.05f,
+        (vec4){1.0f, 1.0f, 1.0f, 1.0f}
     );
-    Instance y_axis;
-    Instance_from_line(
-        &y_axis,
-        (vec3){0.0f, 0.0f, 0.0f},
-        (vec3){0.0f, 4.0f, 0.0f},
-        line_r,
-        (vec4){0.0f, 1.0f, 0.0f, 1.0f}
+    Instance camera_frustum = {
+        .color = {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    glm_mat4_identity(camera_frustum.model_matrix);
+    glm_translate(camera_frustum.model_matrix, camera_pos);
+    glm_quat_rotate(
+        camera_frustum.model_matrix, camera_rot, camera_frustum.model_matrix
     );
-    Instance y_axis_tip;
-    Instance_from_line(
-        &y_axis_tip,
-        (vec3){0.0f, 4.0f, 0.0f},
-        (vec3){0.0f, 4.5f, 0.0f},
-        cone_r,
-        (vec4){0.0f, 1.0f, 0.0f, 1.0f}
-    );
-    Instance z_axis;
-    Instance_from_line(
-        &z_axis,
-        (vec3){0.0f, 0.0f, 0.0f},
-        (vec3){0.0f, 0.0f, 4.0f},
-        line_r,
-        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
-    );
-    Instance z_axis_tip;
-    Instance_from_line(
-        &z_axis_tip,
-        (vec3){0.0f, 0.0f, 4.0f},
-        (vec3){0.0f, 0.0f, 4.5f},
-        cone_r,
-        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
-    );
+    glm_scale_uni(camera_frustum.model_matrix, 0.5f);
+
+    Instance ref_camera = {
+        .color = {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    glm_mat4_copy(global_axis.model_matrix, ref_camera.model_matrix);
 
     MeshHandle tri = register_triangle(&engine);
     Instance tri_instance = {.color = {1, 0, 0, 1}};
@@ -157,18 +156,12 @@ int main(void) {
 
     u32 frame_number = 0;
     while (!engine.window.should_close && frame_number < 20) {
-        Raijin_draw_disc_instance(&engine, disc_instance);
         Raijin_draw_mesh_instance(&engine, tri, tri_instance);
-        Raijin_draw_sphere_uv_instance(&engine, sphere_instance);
-        Raijin_draw_cylinder_instance(&engine, x_axis);
-        Raijin_draw_cone_instance(&engine, x_axis_tip);
-        Raijin_draw_cylinder_instance(&engine, y_axis);
-        Raijin_draw_cone_instance(&engine, y_axis_tip);
-        Raijin_draw_cylinder_instance(&engine, z_axis);
-        Raijin_draw_cone_instance(&engine, z_axis_tip);
-        // for (u32 i = 0; i < 3; ++i) {
-        //     Raijin_draw_cube_instance(&engine, cube_instances[i]);
-        // }
+        Raijin_draw_disc_instance(&engine, disc_instance);
+        Raijin_draw_assembly_instance(&engine, axis_assy, global_axis);
+        Raijin_draw_assembly_instance(&engine, axis_assy, camera_axis);
+        Raijin_draw_assembly_instance(&engine, frustum, ref_camera);
+        Raijin_draw_assembly_instance(&engine, frustum, camera_frustum);
         Raijin_render(&engine);
         Raijin_copy_frame_to_buffer(
             &engine, width, height, output_buffer, buffer_size
