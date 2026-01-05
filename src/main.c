@@ -91,12 +91,48 @@ int main(void) {
     };
     glm_mat4_identity(global_axis.model_matrix);
 
-    Instance local_axis = {
+    vec4 rot_x, rot_y, rot_z;
+    glm_quatv(rot_x, GLM_PI_4, GLM_XUP);
+    glm_quatv(rot_y, GLM_PI_4, GLM_YUP);
+    glm_quatv(rot_z, GLM_PI_4, GLM_ZUP);
+
+    vec4 camera_rot;
+    glm_quat_mul(rot_z, rot_y, camera_rot);
+    glm_quat_mul(camera_rot, rot_x, camera_rot);
+
+    vec3 camera_pos = {4.0f, 4.0f, 4.0f};
+    f32 camera_scale = 0.5f;
+
+    Instance camera_axis = {
         .color = {0.1f, 0.1f, 0.1f, 1.0f},
     };
-    glm_mat4_identity(local_axis.model_matrix);
-    glm_translate(local_axis.model_matrix, (vec3){1.0f, 1.0f, 1.0f});
-    glm_scale_uni(local_axis.model_matrix, 0.5f);
+    glm_mat4_identity(camera_axis.model_matrix);
+    glm_translate(camera_axis.model_matrix, camera_pos);
+    glm_quat_rotate(
+        camera_axis.model_matrix, camera_rot, camera_axis.model_matrix
+    );
+    glm_scale_uni(camera_axis.model_matrix, camera_scale);
+
+    AssemblyHandle frustum = Raijin_create_frustum(
+        &engine,
+        engine.camera.proj_matrix,
+        0.05f,
+        (vec4){1.0f, 1.0f, 1.0f, 1.0f}
+    );
+    Instance camera_frustum = {
+        .color = {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    glm_mat4_identity(camera_frustum.model_matrix);
+    glm_translate(camera_frustum.model_matrix, camera_pos);
+    glm_quat_rotate(
+        camera_frustum.model_matrix, camera_rot, camera_frustum.model_matrix
+    );
+    glm_scale_uni(camera_frustum.model_matrix, 0.5f);
+
+    Instance ref_camera = {
+        .color = {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    glm_mat4_copy(global_axis.model_matrix, ref_camera.model_matrix);
 
     MeshHandle tri = register_triangle(&engine);
     Instance tri_instance = {.color = {1, 0, 0, 1}};
@@ -114,7 +150,9 @@ int main(void) {
         Raijin_draw_mesh_instance(&engine, tri, tri_instance);
         Raijin_draw_disc_instance(&engine, disc_instance);
         Raijin_draw_assembly_instance(&engine, axis_assy, global_axis);
-        Raijin_draw_assembly_instance(&engine, axis_assy, local_axis);
+        Raijin_draw_assembly_instance(&engine, axis_assy, camera_axis);
+        Raijin_draw_assembly_instance(&engine, frustum, ref_camera);
+        Raijin_draw_assembly_instance(&engine, frustum, camera_frustum);
         Raijin_render(&engine);
     }
 

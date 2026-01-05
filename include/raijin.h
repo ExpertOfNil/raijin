@@ -188,7 +188,6 @@ AssemblyHandle Raijin_create_axis(
 ) {
     AssemblyHandle axis_assy = Raijin_create_assembly(engine);
     f32 cone_r = axis_radius * 1.5f;
-    //f32 cone_len = axis_radius * 10.0f * 1.5f;
     f32 cone_end = axis_length + axis_length * 0.1f;
     f32 origin_r = axis_radius * 4.0f;
     if (include_origin) {
@@ -274,6 +273,58 @@ AssemblyHandle Raijin_create_axis(
     );
 
     return axis_assy;
+}
+
+AssemblyHandle Raijin_create_frustum(
+    Raijin* engine,
+    mat4 proj_matrix,
+    float line_radius,
+    vec4 color
+) {
+    AssemblyHandle frustum = Raijin_create_assembly(engine);
+    mat4 inv_proj;
+    glm_mat4_inv(proj_matrix, inv_proj);
+    vec3 corners[4] = {
+        // Far plane, ccw order starting with top-right
+        // clang-format off
+        {1.0f, 1.0f, 1.0f},
+        {-1.0f, 1.0f, 1.0f},
+        {-1.0f, -1.0f, 1.0f},
+        {1.0f, -1.0f, 1.0f},
+        // clang-format on
+    };
+    for (u32 i = 0; i < 4; ++i) {
+        vec4 clip_pos = {corners[i][0], corners[i][1], corners[i][2], 1.0f};
+        vec4 world_pos;
+        glm_mat4_mulv(inv_proj, clip_pos, world_pos);
+        glm_vec4_scale(world_pos, 1.0f / world_pos[3], world_pos);
+        glm_vec4_normalize(world_pos);
+        glm_vec4_scale(world_pos, 4.0f, world_pos);
+        glm_vec4_copy3(world_pos, corners[i]);
+    }
+
+    for (u32 i = 0; i < 4; ++i) {
+        Instance line;
+        Instance_from_line(
+            &line, (vec3){0.0f, 0.0f, 0.0f}, corners[i], line_radius, color
+        );
+        Raijin_assembly_add_mesh(
+            engine, frustum, engine->renderer.builtin.cylinder, line
+        );
+    }
+
+    for (u32 i = 0; i < 4; ++i) {
+        Instance line;
+        u32 next_corner = (i + 1) % 4;
+        Instance_from_line(
+            &line, corners[i], corners[next_corner], line_radius, color
+        );
+        Raijin_assembly_add_mesh(
+            engine, frustum, engine->renderer.builtin.cylinder, line
+        );
+    }
+
+    return frustum;
 }
 
 void Raijin_assembly_add_mesh(
