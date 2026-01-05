@@ -23,6 +23,7 @@ typedef struct Raijin {
     Renderer renderer;
     PanOrbitCamera camera;
     MouseState mouse;
+    AssemblyArray assemblies;
 } Raijin;
 
 /* Function prototypes */
@@ -32,6 +33,22 @@ ReturnStatus Raijin_init(
 );
 void Raijin_handle_events(Raijin* engine);
 MeshHandle Raijin_register_mesh(Raijin* engine, Mesh* mesh);
+AssemblyHandle Raijin_create_assembly(Raijin* engine);
+AssemblyHandle Raijin_create_axis(
+    Raijin* engine, f32 axis_length, f32 axis_radius, bool include_origin
+);
+void Raijin_assembly_add_mesh(
+    Raijin* engine,
+    AssemblyHandle assy_handle,
+    MeshHandle mesh_handle,
+    Instance instance
+);
+void Raijin_draw_mesh_instance(
+    Raijin* engine, MeshHandle mesh_handle, Instance instance
+);
+void Raijin_draw_assembly_instance(
+    Raijin* engine, AssemblyHandle assy_handle, Instance parent_instance
+);
 void Raijin_draw_mesh(
     Raijin* engine,
     MeshHandle mesh_handle,
@@ -40,8 +57,13 @@ void Raijin_draw_mesh(
     f32 scale,
     vec4 color
 );
-void Raijin_draw_mesh_instance(
-    Raijin* engine, MeshHandle mesh_handle, Instance instance
+void Raijin_draw_assembly(
+    Raijin* engine,
+    AssemblyHandle assy_handle,
+    float* position,
+    vec3* rotation,
+    f32 scale,
+    float* color
 );
 void Raijin_draw_cube(
     Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
@@ -137,13 +159,135 @@ void Raijin_handle_events(Raijin* engine) {
 }
 
 void Raijin_destroy(Raijin* engine) {
+    for (u32 i = 0; i < engine->assemblies.count; ++i) {
+        Assembly* assembly = &engine->assemblies.items[i];
+        AssemblyComponentArray_free(&assembly->components);
+        log_debug("Assy component %d free.", i);
+    }
+    AssemblyArray_free(&engine->assemblies);
+    log_debug("Assy array free.");
     Renderer_destroy(&engine->renderer);
+    log_debug("Renderer free.");
     SdlWindow_destroy(&engine->window);
 }
 // #endif
 
 MeshHandle Raijin_register_mesh(Raijin* engine, Mesh* mesh) {
     return Renderer_register_mesh(&engine->renderer, mesh);
+}
+
+AssemblyHandle Raijin_create_assembly(Raijin* engine) {
+    Assembly assembly = {0};
+    AssemblyComponentArray_init(&assembly.components);
+    AssemblyArray_push(&engine->assemblies, assembly);
+    return engine->assemblies.count - 1;
+}
+
+AssemblyHandle Raijin_create_axis(
+    Raijin* engine, f32 axis_length, f32 axis_radius, bool include_origin
+) {
+    AssemblyHandle axis_assy = Raijin_create_assembly(engine);
+    f32 cone_r = axis_radius * 1.5f;
+    //f32 cone_len = axis_radius * 10.0f * 1.5f;
+    f32 cone_end = axis_length + axis_length * 0.1f;
+    f32 origin_r = axis_radius * 4.0f;
+    if (include_origin) {
+        Instance sphere_instance = {
+            .color = {1.0, 0.0, 1.0, 1.0},
+        };
+        glm_mat4_identity(sphere_instance.model_matrix);
+        glm_translate(sphere_instance.model_matrix, (vec3){0.0f, 0.0f, 0.0f});
+        glm_scale_uni(sphere_instance.model_matrix, origin_r);
+        Raijin_assembly_add_mesh(
+            engine,
+            axis_assy,
+            engine->renderer.builtin.sphere_uv,
+            sphere_instance
+        );
+    }
+
+    Instance x_axis;
+    Instance_from_line(
+        &x_axis,
+        (vec3){0.0f, 0.0f, 0.0f},
+        (vec3){axis_length, 0.0f, 0.0f},
+        axis_radius,
+        (vec4){1.0f, 0.0f, 0.0f, 1.0f}
+    );
+    Raijin_assembly_add_mesh(
+        engine, axis_assy, engine->renderer.builtin.cylinder, x_axis
+    );
+    Instance x_axis_tip;
+    Instance_from_line(
+        &x_axis_tip,
+        (vec3){axis_length, 0.0f, 0.0f},
+        (vec3){cone_end, 0.0f, 0.0f},
+        cone_r,
+        (vec4){1.0f, 0.0f, 0.0f, 1.0f}
+    );
+    Raijin_assembly_add_mesh(
+        engine, axis_assy, engine->renderer.builtin.cone, x_axis_tip
+    );
+    Instance y_axis;
+    Instance_from_line(
+        &y_axis,
+        (vec3){0.0f, 0.0f, 0.0f},
+        (vec3){0.0f, axis_length, 0.0f},
+        axis_radius,
+        (vec4){0.0f, 1.0f, 0.0f, 1.0f}
+    );
+    Raijin_assembly_add_mesh(
+        engine, axis_assy, engine->renderer.builtin.cylinder, y_axis
+    );
+    Instance y_axis_tip;
+    Instance_from_line(
+        &y_axis_tip,
+        (vec3){0.0f, axis_length, 0.0f},
+        (vec3){0.0f, cone_end, 0.0f},
+        cone_r,
+        (vec4){0.0f, 1.0f, 0.0f, 1.0f}
+    );
+    Raijin_assembly_add_mesh(
+        engine, axis_assy, engine->renderer.builtin.cone, y_axis_tip
+    );
+    Instance z_axis;
+    Instance_from_line(
+        &z_axis,
+        (vec3){0.0f, 0.0f, 0.0f},
+        (vec3){0.0f, 0.0f, axis_length},
+        axis_radius,
+        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
+    );
+    Raijin_assembly_add_mesh(
+        engine, axis_assy, engine->renderer.builtin.cylinder, z_axis
+    );
+    Instance z_axis_tip;
+    Instance_from_line(
+        &z_axis_tip,
+        (vec3){0.0f, 0.0f, axis_length},
+        (vec3){0.0f, 0.0f, cone_end},
+        cone_r,
+        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
+    );
+    Raijin_assembly_add_mesh(
+        engine, axis_assy, engine->renderer.builtin.cone, z_axis_tip
+    );
+
+    return axis_assy;
+}
+
+void Raijin_assembly_add_mesh(
+    Raijin* engine,
+    AssemblyHandle assy_handle,
+    MeshHandle mesh_handle,
+    Instance instance
+) {
+    Assembly* assembly = &engine->assemblies.items[assy_handle];
+    AssemblyComponent component = {
+        .mesh_handle = mesh_handle,
+        .instance = instance,
+    };
+    AssemblyComponentArray_push(&assembly->components, component);
 }
 
 ReturnStatus Raijin_render(Raijin* engine) {
@@ -174,6 +318,41 @@ void Raijin_draw_mesh(
     glm_translate(instance.model_matrix, position);
     glm_scale_uni(instance.model_matrix, scale);
     Raijin_draw_mesh_instance(engine, mesh_handle, instance);
+}
+
+void Raijin_draw_assembly_instance(
+    Raijin* engine, AssemblyHandle assy_handle, Instance parent_instance
+) {
+    Assembly* assembly = &engine->assemblies.items[assy_handle];
+    for (u32 i = 0; i < assembly->components.count; ++i) {
+        AssemblyComponent* comp = &assembly->components.items[i];
+        Instance final_instance = {0};
+        glm_mat4_mul(
+            parent_instance.model_matrix,
+            comp->instance.model_matrix,
+            final_instance.model_matrix
+        );
+        glm_vec4_mul(
+            comp->instance.color, parent_instance.color, final_instance.color
+        );
+        Raijin_draw_mesh_instance(engine, comp->mesh_handle, final_instance);
+    }
+}
+
+void Raijin_draw_assembly(
+    Raijin* engine,
+    AssemblyHandle assy_handle,
+    float* position,
+    vec3* rotation,
+    f32 scale,
+    float* color
+) {
+    Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
+    glm_mat4_identity(instance.model_matrix);
+    glm_mat4_ins3(rotation, instance.model_matrix);
+    glm_translate(instance.model_matrix, position);
+    glm_scale_uni(instance.model_matrix, scale);
+    Raijin_draw_assembly_instance(engine, assy_handle, instance);
 }
 
 void Raijin_draw_cube_instance(Raijin* engine, Instance instance) {

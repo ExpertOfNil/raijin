@@ -74,13 +74,6 @@ int main(void) {
     glm_translate(cube_instances[2].model_matrix, (vec3){0.0f, 0.0f, 4.0f});
     glm_scale_uni(cube_instances[2].model_matrix, 0.2f);
 
-    Instance sphere_instance = {
-        .color = {1.0, 0.0, 1.0, 1.0},
-    };
-    glm_mat4_identity(sphere_instance.model_matrix);
-    glm_translate(sphere_instance.model_matrix, (vec3){0.0f, 0.0f, 0.0f});
-    glm_scale_uni(sphere_instance.model_matrix, 0.2f);
-
     Instance disc_instance = {
         .color = {1.0, 1.0, 1.0, 1.0},
     };
@@ -91,56 +84,19 @@ int main(void) {
     );
     glm_scale_uni(disc_instance.model_matrix, 0.5f);
 
-    f32 line_r = 0.05f;
-    f32 cone_r = line_r * 1.5f;
-    Instance x_axis;
-    Instance_from_line(
-        &x_axis,
-        (vec3){0.0f, 0.0f, 0.0f},
-        (vec3){4.0f, 0.0f, 0.0f},
-        line_r,
-        (vec4){1.0f, 0.0f, 0.0f, 1.0f}
-    );
-    Instance x_axis_tip;
-    Instance_from_line(
-        &x_axis_tip,
-        (vec3){4.0f, 0.0f, 0.0f},
-        (vec3){4.5f, 0.0f, 0.0f},
-        cone_r,
-        (vec4){1.0f, 0.0f, 0.0f, 1.0f}
-    );
-    Instance y_axis;
-    Instance_from_line(
-        &y_axis,
-        (vec3){0.0f, 0.0f, 0.0f},
-        (vec3){0.0f, 4.0f, 0.0f},
-        line_r,
-        (vec4){0.0f, 1.0f, 0.0f, 1.0f}
-    );
-    Instance y_axis_tip;
-    Instance_from_line(
-        &y_axis_tip,
-        (vec3){0.0f, 4.0f, 0.0f},
-        (vec3){0.0f, 4.5f, 0.0f},
-        cone_r,
-        (vec4){0.0f, 1.0f, 0.0f, 1.0f}
-    );
-    Instance z_axis;
-    Instance_from_line(
-        &z_axis,
-        (vec3){0.0f, 0.0f, 0.0f},
-        (vec3){0.0f, 0.0f, 4.0f},
-        line_r,
-        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
-    );
-    Instance z_axis_tip;
-    Instance_from_line(
-        &z_axis_tip,
-        (vec3){0.0f, 0.0f, 4.0f},
-        (vec3){0.0f, 0.0f, 4.5f},
-        cone_r,
-        (vec4){0.001f, 0.001f, 1.0f, 1.0f}
-    );
+    AssemblyHandle axis_assy = Raijin_create_axis(&engine, 4.0f, 0.05f, true);
+
+    Instance global_axis = {
+        .color = {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    glm_mat4_identity(global_axis.model_matrix);
+
+    Instance local_axis = {
+        .color = {0.1f, 0.1f, 0.1f, 1.0f},
+    };
+    glm_mat4_identity(local_axis.model_matrix);
+    glm_translate(local_axis.model_matrix, (vec3){1.0f, 1.0f, 1.0f});
+    glm_scale_uni(local_axis.model_matrix, 0.5f);
 
     MeshHandle tri = register_triangle(&engine);
     Instance tri_instance = {.color = {1, 0, 0, 1}};
@@ -157,16 +113,10 @@ int main(void) {
         Raijin_handle_events(&engine);
         Raijin_draw_mesh_instance(&engine, tri, tri_instance);
         Raijin_draw_disc_instance(&engine, disc_instance);
-        Raijin_draw_sphere_uv_instance(&engine, sphere_instance);
-        Raijin_draw_cylinder_instance(&engine, x_axis);
-        Raijin_draw_cone_instance(&engine, x_axis_tip);
-        Raijin_draw_cylinder_instance(&engine, y_axis);
-        Raijin_draw_cone_instance(&engine, y_axis_tip);
-        Raijin_draw_cylinder_instance(&engine, z_axis);
-        Raijin_draw_cone_instance(&engine, z_axis_tip);
-        // for (u32 i = 0; i < 3; ++i) {
-        //     Raijin_draw_cube_instance(&engine, cube_instances[i]);
-        // }
+        Raijin_draw_assembly_instance(&engine, axis_assy, global_axis);
+        Raijin_draw_assembly_instance(&engine, axis_assy, local_axis);
         Raijin_render(&engine);
     }
+
+    Raijin_destroy(&engine);
 }

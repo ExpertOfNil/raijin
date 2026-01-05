@@ -45,6 +45,21 @@ typedef struct Mesh {
 } Mesh;
 DEFINE_DYNAMIC_ARRAY(Mesh, MeshArray)
 
+typedef u32 AssemblyHandle;
+#define INVALID_ASSEMBLY_HANDLE ((AssemblyHandle) - 1)
+
+typedef struct AssemblyComponent {
+    MeshHandle mesh_handle;
+    Instance instance;
+} AssemblyComponent;
+DEFINE_DYNAMIC_ARRAY(AssemblyComponent, AssemblyComponentArray)
+
+typedef struct Assembly {
+    AssemblyComponentArray components;
+} Assembly;
+DEFINE_DYNAMIC_ARRAY(Assembly, AssemblyArray)
+
+
 /* Function Prototypes */
 
 void Instance_set_position(Instance* instance, vec3 position);
@@ -250,15 +265,6 @@ void Instance_from_line(
     // Convert quaternion to rotation matrix
     mat4 rotation;
     glm_quat_mat4(quat, rotation);
-    for (int i = 0; i < 4; i++) {
-        log_debug(
-            "  [%f, %f, %f, %f]",
-            rotation[i][0],
-            rotation[i][1],
-            rotation[i][2],
-            rotation[i][3]
-        );
-    }
 
     // Manually build the matrix: scale the rotation matrix, then set
     // translation

@@ -66,8 +66,8 @@ typedef struct Renderer {
     DrawCommandArray draw_commands;
     MeshArray meshes;
     struct {
-        //MeshHandle triangle;
-        //MeshHandle tetrahedron;
+        // MeshHandle triangle;
+        // MeshHandle tetrahedron;
         MeshHandle cube;
         MeshHandle sphere_uv;
         MeshHandle disc;
@@ -250,7 +250,8 @@ static void Renderer_register_builtin_meshes(Renderer* renderer) {
 
     Mesh sphere_uv_mesh = {0};
     Mesh_create_sphere_uv(&sphere_uv_mesh, 16);
-    renderer->builtin.sphere_uv = Renderer_register_mesh(renderer, &sphere_uv_mesh);
+    renderer->builtin.sphere_uv =
+        Renderer_register_mesh(renderer, &sphere_uv_mesh);
 
     Mesh disc_mesh = {0};
     Mesh_create_disc(&disc_mesh, 32);
@@ -258,7 +259,8 @@ static void Renderer_register_builtin_meshes(Renderer* renderer) {
 
     Mesh cylinder_mesh = {0};
     Mesh_create_cylinder(&cylinder_mesh, 16);
-    renderer->builtin.cylinder = Renderer_register_mesh(renderer, &cylinder_mesh);
+    renderer->builtin.cylinder =
+        Renderer_register_mesh(renderer, &cylinder_mesh);
 
     Mesh cone_mesh = {0};
     Mesh_create_cone(&cone_mesh, 16);
@@ -1114,53 +1116,91 @@ ReturnStatus Renderer_render(Renderer* renderer) {
 }
 
 void Renderer_destroy(Renderer* renderer) {
-    for (u32 i = 0; i < renderer->meshes.count; ++i) {
+    DrawCommandArray_free(&renderer->draw_commands);
+
+    u32 builtin_count = sizeof(renderer->builtin) / sizeof(MeshHandle);
+    log_debug("Builtin count: %d", builtin_count);
+    for (u32 i = 0; i < builtin_count; ++i) {
         Mesh* mesh = &renderer->meshes.items[i];
-        if (mesh->vertex_buffer != NULL) wgpuBufferRelease(mesh->vertex_buffer);
-        if (mesh->index_buffer != NULL) wgpuBufferRelease(mesh->index_buffer);
-        if (mesh->instance_buffer != NULL)
+        if (mesh->vertex_buffer != NULL) {
+            wgpuBufferRelease(mesh->vertex_buffer);
+        }
+        if (mesh->index_buffer != NULL) {
+            wgpuBufferRelease(mesh->index_buffer);
+        }
+        if (mesh->instance_buffer != NULL) {
             wgpuBufferRelease(mesh->instance_buffer);
-        if (mesh->edge_index_buffer != NULL)
+        }
+        if (mesh->edge_index_buffer != NULL) {
             wgpuBufferRelease(mesh->edge_index_buffer);
-        if (mesh->edge_instance_buffer != NULL)
+        }
+        if (mesh->edge_instance_buffer != NULL) {
             wgpuBufferRelease(mesh->edge_instance_buffer);
-        VertexArray_free(&mesh->vertices);
-        IndexArray_free(&mesh->indices);
-        IndexArray_free(&mesh->edge_indices);
+        }
+        if (mesh->vertices.items != NULL) {
+            VertexArray_free(&mesh->vertices);
+        }
+        if (mesh->indices.items != NULL) {
+            IndexArray_free(&mesh->indices);
+        }
+        if (mesh->edge_indices.items != NULL) {
+            IndexArray_free(&mesh->edge_indices);
+        }
+        log_debug("Mesh %d free.", i);
     }
     MeshArray_free(&renderer->meshes);
+    log_debug("Mesh array free.");
 
     if (renderer->uniform_buffer != NULL) {
         wgpuBufferRelease(renderer->uniform_buffer);
+        log_debug("Uniform buffer released.");
     }
     if (renderer->solid_pipeline != NULL) {
         wgpuRenderPipelineRelease(renderer->solid_pipeline);
+        log_debug("Solid pipeline released.");
     }
     if (renderer->edges_pipeline != NULL) {
         wgpuRenderPipelineRelease(renderer->edges_pipeline);
+        log_debug("Edges pipeline released.");
     }
     if (renderer->depth_texture_view != NULL) {
         wgpuTextureViewRelease(renderer->depth_texture_view);
+        log_debug("Depth texture view released.");
     }
     if (renderer->depth_texture != NULL) {
         wgpuTextureRelease(renderer->depth_texture);
+        log_debug("Depth texture released.");
     }
     switch (renderer->render_mode) {
         case RENDER_MODE_WINDOWED: {
             if (renderer->render_target.windowed.surface != NULL) {
                 wgpuSurfaceRelease(renderer->render_target.windowed.surface);
+                log_debug("Window surface released.");
             }
         } break;
         case RENDER_MODE_HEADLESS: {
             if (renderer->render_target.headless.texture != NULL) {
                 wgpuTextureRelease(renderer->render_target.headless.texture);
+                log_debug("Headless texture released.");
             }
         } break;
     }
-    if (renderer->queue != NULL) wgpuQueueRelease(renderer->queue);
-    if (renderer->device != NULL) wgpuDeviceRelease(renderer->device);
-    if (renderer->adapter != NULL) wgpuAdapterRelease(renderer->adapter);
-    if (renderer->instance != NULL) wgpuInstanceRelease(renderer->instance);
+    if (renderer->queue != NULL) {
+        wgpuQueueRelease(renderer->queue);
+        log_debug("Queue released.");
+    }
+    if (renderer->device != NULL) {
+        wgpuDeviceRelease(renderer->device);
+        log_debug("Device released.");
+    }
+    if (renderer->adapter != NULL) {
+        wgpuAdapterRelease(renderer->adapter);
+        log_debug("Adapter released.");
+    }
+    if (renderer->instance != NULL) {
+        wgpuInstanceRelease(renderer->instance);
+        log_debug("Instance released.");
+    }
 }
 
 void Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
