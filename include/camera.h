@@ -77,16 +77,17 @@ void PanOrbitCamera_update(PanOrbitCamera* cam) {
 // TODO (mmckenna): add function for adding aspect ratio for resize
 
 void PanOrbitCamera_orbit(PanOrbitCamera* cam, vec2 mouse_delta) {
-    float yaw = -mouse_delta[0] * cam->mouse_speed;
-    float pitch = -mouse_delta[1] * cam->mouse_speed;
-    vec4 yaw_q;
-    glm_quatv(yaw_q, yaw, GLM_ZUP);
-    vec3 rt;
-    glm_quat_rotatev(cam->orientation, GLM_XUP, rt);
-    vec4 pitch_q;
-    glm_quatv(pitch_q, pitch, rt);
+    float angle = glm_vec2_norm(mouse_delta) * cam->mouse_speed;
+    if (angle < 1e-6f) return;
+
+    vec3 screen_axis = {-mouse_delta[1], 0.0f, -mouse_delta[0]};
+    glm_vec3_normalize(screen_axis);
+
+    vec3 world_axis;
+    glm_quat_rotatev(cam->orientation, screen_axis, world_axis);
+
     vec4 q;
-    glm_quat_mul(yaw_q, pitch_q, q);
+    glm_quatv(q, angle, world_axis);
     glm_quat_mul(q, cam->orientation, cam->orientation);
     glm_quat_normalize(cam->orientation);
     PanOrbitCamera_update(cam);
