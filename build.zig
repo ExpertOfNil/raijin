@@ -16,6 +16,7 @@ const INCLUDE_DIRS: []const []const u8 = &.{
 };
 
 pub fn build(b: *std.Build) void {
+    b.resolveInstallPrefix(b.pathFromRoot("."), .{});
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -64,8 +65,8 @@ fn addRaijinExe(
 }
 
 fn generateCompileFlags(b: *std.Build) void {
-    var buf = std.ArrayList(u8).init(b.allocator);
-    const w = buf.writer();
+    var buf: std.ArrayList(u8) = .{};
+    const w = buf.writer(b.allocator);
 
     for (C_FLAGS) |flag| {
         w.print("{s}\n", .{flag}) catch @panic("write failed");
@@ -76,7 +77,10 @@ fn generateCompileFlags(b: *std.Build) void {
     }
 
     const update = b.addUpdateSourceFiles();
-    update.addBytesToSource(buf.toOwnedSlice() catch @panic("OOM"), "compile_flags.txt");
+    update.addBytesToSource(
+        buf.toOwnedSlice(b.allocator) catch @panic("OOM"),
+        "compile_flags.txt",
+    );
 
     const step = b.step("clangd", "Generate compile_flags.txt for clangd");
     step.dependOn(&update.step);

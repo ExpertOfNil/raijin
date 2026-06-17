@@ -4,13 +4,13 @@
 #define COMMON_CFLAGS                                     \
     "-std=c99", "-Wall", "-Wextra", "-pedantic", "-ggdb", \
         "-Wno-gnu-zero-variadic-macro-arguments"
-#define BUILD_DIR "build/"
+#define BIN_DIR "bin/"
 #define SRC_DIR "src/"
 
 int main(int argc, char** argv) {
     NOB_GO_REBUILD_URSELF(argc, argv);
     Nob_Cmd cmd = {0};
-    if (!nob_mkdir_if_not_exists(BUILD_DIR)) return 1;
+    if (!nob_mkdir_if_not_exists(BIN_DIR)) return 1;
 
     nob_cmd_append(&cmd, "clang", COMMON_CFLAGS);
     nob_cmd_append(
@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
         "-Ilib/cimpl/include"
     );
     nob_cmd_append(&cmd, SRC_DIR "main.c");
-    nob_cmd_append(&cmd, "-o", BUILD_DIR "raijin");
+    nob_cmd_append(&cmd, "-o", BIN_DIR "raijin");
     nob_cmd_append(&cmd, "-lm");
     nob_cmd_append(&cmd, "-Llib/wgpu", "-lwgpu_native");
     nob_cmd_append(&cmd, "-Llib/cglm", "-lcglm");
@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
         "-Ilib/cimpl/include"
     );
     nob_cmd_append(&cmd, SRC_DIR "main_headless.c");
-    nob_cmd_append(&cmd, "-o", BUILD_DIR "raijin_headless");
+    nob_cmd_append(&cmd, "-o", BIN_DIR "raijin_headless");
     nob_cmd_append(&cmd, "-lm");
     nob_cmd_append(&cmd, "-Llib/wgpu", "-lwgpu_native");
     nob_cmd_append(&cmd, "-Llib/cglm", "-lcglm");
