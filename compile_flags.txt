@@ -1,0 +1,9 @@
+-std=c11
+-Wall
+-Wextra
+-pedantic
+-Wno-gnu-zero-variadic-macro-arguments
+-Iinclude
+-Ilib/wgpu/include
+-Ilib/cglm/include
+-Ilib/cimpl/include
