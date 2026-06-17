@@ -1,11 +1,9 @@
 #ifndef MESH_H
 #define MESH_H
 
-#include "cglm/cglm.h"
 #include "cglm/mat4.h"
 #include "cglm/vec3.h"
 #include "cimpl_core.h"
-#include "cimpl_glm.h"
 #include "core.h"
 #include "webgpu.h"
 
@@ -331,7 +329,7 @@ void Mesh_create_cube(Mesh* mesh) {
 }
 
 void Mesh_create_disc(Mesh* mesh, u32 divisions) {
-    f32 theta = 2.0f * PI / divisions;
+    f32 theta = 2.0f * GLM_PI / divisions;
     u32 n_vertices = divisions + 1;
     u32 n_indices = divisions * 3;
     u32 n_edge_indices = divisions * 2;
@@ -396,12 +394,12 @@ void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
 
     // Rings (excluding poles)
     for (u32 i = 1; i < latitude; ++i) {
-        f32 phi = (f32)i * PI / (f32)latitude;  // [0, π]
+        f32 phi = (f32)i * GLM_PI / (f32)latitude;  // [0, π]
         f32 y = cosf(phi);
         f32 r = sinf(phi);
 
         for (u32 j = 0; j < longitude; ++j) {
-            f32 theta = (f32)j * 2.0f * PI / (f32)longitude;  // [0, 2π)
+            f32 theta = (f32)j * 2.0f * GLM_PI / (f32)longitude;  // [0, 2π)
             f32 x = r * cos(theta);
             f32 z = r * sin(theta);
 
@@ -502,7 +500,7 @@ void Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     VertexArray_reserve(&mesh->vertices, n_vertices);
     IndexArray_reserve(&mesh->indices, n_indices);
     IndexArray_reserve(&mesh->edge_indices, n_edge_indices);
-    f32 theta = 2.0f * PI / divisions;
+    f32 theta = 2.0f * GLM_PI / divisions;
     // Generate side vertices
     for (u32 i = 0; i < divisions; ++i) {
         f32 angle = (f32)i * theta;
@@ -618,7 +616,7 @@ void Mesh_create_cone(Mesh* mesh, u32 divisions) {
     VertexArray_reserve(&mesh->vertices, n_vertices);
     IndexArray_reserve(&mesh->indices, n_indices);
     IndexArray_reserve(&mesh->edge_indices, n_edge_indices);
-    f32 theta = 2.0f * PI / divisions;
+    f32 theta = 2.0f * GLM_PI / divisions;
     // Generate base ring vertices
     for (u32 i = 0; i < divisions; ++i) {
         f32 angle = (f32)i * theta;

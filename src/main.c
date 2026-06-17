@@ -1,5 +1,5 @@
 #define CIMPL_IMPLEMENTATION
-#include "cimpl_glm.h"
+#include "cglm/cglm.h"
 #include "raijin.h"
 
 MeshHandle register_triangle(Raijin* engine) {
@@ -80,7 +80,7 @@ int main(void) {
     glm_mat4_identity(disc_instance.model_matrix);
     glm_translate(disc_instance.model_matrix, (vec3){0.0f, 0.0f, 0.0f});
     glm_rotate_x(
-        disc_instance.model_matrix, PI * 0.5f, disc_instance.model_matrix
+        disc_instance.model_matrix, GLM_PI * 0.5f, disc_instance.model_matrix
     );
     glm_scale_uni(disc_instance.model_matrix, 0.5f);
 

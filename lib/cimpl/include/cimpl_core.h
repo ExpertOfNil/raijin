@@ -2,6 +2,7 @@
 #define CIMPL_CORE_H
 
 #include <memory.h>
+#include <stdalign.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -57,6 +58,31 @@ typedef enum {
     RETURN_ERR,
 } CimplReturn;
 
+static inline size_t cimpl_align_up(size_t value, size_t alignment) {
+    return (value + alignment - 1) & ~(alignment - 1);
+}
+
+static inline void* cimpl_aligned_realloc(
+    void* old_ptr, size_t old_size, size_t new_size, size_t alignment
+) {
+    if (alignment < sizeof(void*)) {
+        alignment = sizeof(void*);
+    }
+
+    size_t alloc_size = cimpl_align_up(new_size, alignment);
+
+    void* new_ptr = aligned_alloc(alignment, alloc_size);
+    if (new_ptr == NULL) return NULL;
+
+    if (old_ptr != NULL) {
+        size_t copy_size = old_size < new_size ? old_size : new_size;
+        memcpy(new_ptr, old_ptr, copy_size);
+        free(old_ptr);
+    }
+
+    return new_ptr;
+}
+
 #define DEFAULT_ARRAY_CAPACITY 64
 #define ARRAY_COUNT(arr) (sizeof((arr)) / sizeof((arr)[0]))
 #define DEFINE_DYNAMIC_ARRAY(type, name)                               \
@@ -74,19 +100,24 @@ typedef enum {
                                                                        \
     static inline CimplReturn name##_reserve(name* arr, size_t cap) {  \
         if ((cap) > (arr)->capacity) {                                 \
+            size_t old_capacity = (arr)->capacity;                     \
             if ((arr)->capacity == 0) {                                \
                 (arr)->capacity = DEFAULT_ARRAY_CAPACITY;              \
             }                                                          \
             while ((cap) > (arr)->capacity) {                          \
                 (arr)->capacity *= 2;                                  \
             }                                                          \
-            (arr)->items = CIMPL_REALLOC(                              \
-                (arr)->items, (arr)->capacity * sizeof(*(arr)->items)  \
+            size_t old_size = old_capacity * sizeof(*(arr)->items);    \
+            size_t new_size = (arr)->capacity * sizeof(*(arr)->items); \
+            size_t alignment = _Alignof(type);                         \
+            void* new_items = cimpl_aligned_realloc(                   \
+                arr->items, old_size, new_size, alignment              \
             );                                                         \
-            if ((arr)->items == NULL) {                                \
+            if (new_items == NULL) {                                   \
                 fprintf(stderr, "ARRAY_RESERVE: Out of memory\n");     \
                 return RETURN_ERR;                                     \
             }                                                          \
+            arr->items = new_items;                                    \
         }                                                              \
         return RETURN_OK;                                              \
     }                                                                  \

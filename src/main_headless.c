@@ -1,6 +1,6 @@
 #define CIMPL_IMPLEMENTATION
+#include "cglm/cglm.h"
 #include "cglm/mat4.h"
-#include "cimpl_glm.h"
 #include "raijin.h"
 #include "renderer.h"
 
@@ -84,7 +84,7 @@ int main(void) {
     glm_mat4_identity(disc_instance.model_matrix);
     glm_translate(disc_instance.model_matrix, (vec3){0.0f, 0.0f, 0.0f});
     glm_rotate_x(
-        disc_instance.model_matrix, PI * 0.5f, disc_instance.model_matrix
+        disc_instance.model_matrix, GLM_PI * 0.5f, disc_instance.model_matrix
     );
     glm_scale_uni(disc_instance.model_matrix, 0.5f);
 
