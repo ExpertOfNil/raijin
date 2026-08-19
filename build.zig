@@ -66,15 +66,17 @@ fn addRaijinExe(
 }
 
 fn generateCompileFlags(b: *std.Build) void {
-    var buf: std.ArrayList(u8) = .{};
-    const w = buf.writer(b.allocator);
+    var buf: std.ArrayList(u8) = .empty;
 
     for (C_FLAGS) |flag| {
-        w.print("{s}\n", .{flag}) catch @panic("write failed");
+        buf.appendSlice(b.allocator, flag) catch @panic("OOM");
+        buf.append(b.allocator, '\n') catch @panic("OOM");
     }
 
-    for (INCLUDE_DIRS) |flag| {
-        w.print("-I{s}\n", .{flag}) catch @panic("write failed");
+    for (INCLUDE_DIRS) |dir| {
+        buf.appendSlice(b.allocator, "-I") catch @panic("OOM");
+        buf.appendSlice(b.allocator, dir) catch @panic("OOM");
+        buf.append(b.allocator, '\n') catch @panic("OOM");
     }
 
     const update = b.addUpdateSourceFiles();
