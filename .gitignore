@@ -5,3 +5,6 @@ AGENTS.md
 .cache/
 *.ppm
 *.gif
+zig-out/
+.zig-cache/
+archive/

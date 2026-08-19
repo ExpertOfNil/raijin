@@ -1,6 +1,10 @@
 #ifndef RAIJIN_H
 #define RAIJIN_H
 
+#ifndef CGLM_FORCE_DEPTH_ZERO_TO_ONE
+#define CGLM_FORCE_DEPTH_ZERO_TO_ONE
+#endif
+
 #include <stdbool.h>
 
 #include "camera.h"
@@ -442,6 +446,14 @@ void Raijin_draw_sphere_uv(
     glm_translate(instance.model_matrix, position);
     glm_scale_uni(instance.model_matrix, scale);
     Raijin_draw_sphere_uv_instance(engine, instance);
+}
+
+void Raijin_draw_plane_instance(Raijin* engine, Instance instance) {
+    DrawCommand cmd = {
+        .mesh_handle = engine->renderer.builtin.plane,
+        .instance = instance,
+    };
+    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
 }
 
 void Raijin_draw_disc_instance(Raijin* engine, Instance instance) {

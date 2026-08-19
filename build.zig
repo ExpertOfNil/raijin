@@ -6,6 +6,7 @@ const C_FLAGS: []const []const u8 = &.{
     "-Wextra",
     "-pedantic",
     "-Wno-gnu-zero-variadic-macro-arguments",
+    "-DCGLM_FORCE_DEPTH_ZERO_TO_ONE",
 };
 
 const INCLUDE_DIRS: []const []const u8 = &.{
@@ -22,8 +23,8 @@ pub fn build(b: *std.Build) void {
 
     generateCompileFlags(b);
 
-    addRaijinExe(b, target, optimize, "raijin", "src/main.c");
-    addRaijinExe(b, target, optimize, "raijin_headless", "src/main_headless.c");
+    addRaijinExe(b, target, optimize, "example-windowed", "examples/windowed.c");
+    addRaijinExe(b, target, optimize, "example-headless", "examples/headless.c");
 }
 
 fn addRaijinExe(

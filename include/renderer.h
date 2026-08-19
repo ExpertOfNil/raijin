@@ -70,6 +70,7 @@ typedef struct Renderer {
         // MeshHandle tetrahedron;
         MeshHandle cube;
         MeshHandle sphere_uv;
+        MeshHandle plane;
         MeshHandle disc;
         MeshHandle cylinder;
         MeshHandle cone;
@@ -252,6 +253,10 @@ static void Renderer_register_builtin_meshes(Renderer* renderer) {
     Mesh_create_sphere_uv(&sphere_uv_mesh, 16);
     renderer->builtin.sphere_uv =
         Renderer_register_mesh(renderer, &sphere_uv_mesh);
+
+    Mesh plane_mesh = {0};
+    Mesh_create_plane(&plane_mesh);
+    renderer->builtin.plane = Renderer_register_mesh(renderer, &plane_mesh);
 
     Mesh disc_mesh = {0};
     Mesh_create_disc(&disc_mesh, 32);
@@ -524,7 +529,7 @@ ReturnStatus Renderer_init_windowed(
 
     // Create uniform buffer
     mat4 proj_matrix = {0};
-    glm_perspective_rh_no(
+    glm_perspective(
         glm_rad(60.0), (f32)width / (f32)height, 0.1, 1000.0, proj_matrix
     );
     mat4 view_matrix = {0};
@@ -709,7 +714,7 @@ ReturnStatus Renderer_init_headless(
 
     // Create uniform buffer
     mat4 proj_matrix = {0};
-    glm_perspective_rh_no(
+    glm_perspective(
         glm_rad(60.0), (f32)width / (f32)height, 0.1, 1000.0, proj_matrix
     );
     mat4 view_matrix = {0};
@@ -1098,9 +1103,9 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             );
             if (texture_view != NULL) {
                 Renderer_render_to_view(renderer, texture_view);
-                WGPUStatus present_status =
-                    wgpuSurfacePresent(renderer->render_target.windowed.surface
-                    );
+                WGPUStatus present_status = wgpuSurfacePresent(
+                    renderer->render_target.windowed.surface
+                );
                 // TODO (mmckenna): Handle each status variant
                 if (present_status != WGPUStatus_Success) {
                     log_error("Failed to present surface");

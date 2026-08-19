@@ -2,6 +2,73 @@
 #include "cglm/cglm.h"
 #include "raijin.h"
 
+static const vec2 BIT_POSITIONS[] = {
+    {0, 22},   {0, 26},   {4, 22},  {4, 26},  {11, 26},  {15, 26},
+    {15, 23},  {22, 0},   {26, 0},  {22, 4},  {26, 4},   {26, 11},
+    {26, 15},  {23, 15},  {23, 11}, {11, 23}, {22, 7.5}, {7.5, 22},
+    {26, 7.5}, {7.5, 26}, {15, 30}, {11, 30}, {4, 30},   {0, 30},
+};
+
+static void normalize_position(vec3 pos, float scale) {
+    pos[0] = (0.5f - pos[0] / 30.0f) * scale;
+    pos[2] = (0.5f - pos[2] / 30.0f) * scale;
+}
+
+AssemblyHandle create_code(Raijin* engine, uint32_t code_id) {
+    AssemblyHandle code = Raijin_create_assembly(engine);
+    vec3 targets[] = {
+        // clang-format off
+        {00.0f, 0.001f, 00.0f}, // PT_C
+        {26.0f, 0.001f, 26.0f}, // PT_A
+        {11.5f, 0.001f, 11.5f}, // PT_E
+        {00.0f, 0.001f, 11.0f}, // PT_D
+        {11.0f, 0.001f, 00.0f}, // PT_B
+        {00.0f, 0.001f, 00.0f}, // bit
+        {00.0f, 0.001f, 00.0f}, // bit
+        {00.0f, 0.001f, 00.0f}, // bit
+        // clang-format on
+    };
+
+    u32 selected[3];
+    u32 count = 0;
+    for (u32 bit = 1; bit <= 24; ++bit) {
+        if ((code_id & (UINT32_C(1) << bit)) == 0) continue;
+        selected[count++] = bit - 1;
+    }
+
+    for (u32 i = 0; i < 3; ++i) {
+        const u32 index = selected[i];
+        const u32 target_index = 5 + i;
+        targets[target_index][0] = BIT_POSITIONS[index][0];
+        targets[target_index][2] = BIT_POSITIONS[index][1];
+    }
+
+    Instance plane = {
+        .color = {0.0f, 0.0f, 0.0f, 1.0f},
+    };
+    glm_mat4_identity(plane.model_matrix);
+    Instance_set_position(&plane, (vec3){0.0f, 0.0f, 0.0f});
+    Raijin_assembly_add_mesh(
+        engine, code, engine->renderer.builtin.plane, plane
+    );
+
+    for (u32 i = 0; i < ARRAY_COUNT(targets); ++i) {
+        Instance disc = {
+            .color = {1.0f, 1.0f, 1.0f, 1.0f},
+        };
+        glm_mat4_identity(disc.model_matrix);
+        glm_scale_uni(disc.model_matrix, 0.05f);
+        normalize_position(targets[i], 0.8);
+        printf("Target: [%.3f, %.3f]\n", targets[i][0], targets[i][2]);
+        Instance_set_position(&disc, targets[i]);
+        Raijin_assembly_add_mesh(
+            engine, code, engine->renderer.builtin.disc, disc
+        );
+    }
+
+    return code;
+}
+
 MeshHandle register_triangle(Raijin* engine) {
     // Create a custom triangle
     Mesh triangle = {0};
@@ -113,6 +180,13 @@ int main(void) {
     );
     glm_scale_uni(camera_axis.model_matrix, camera_scale);
 
+    AssemblyHandle code_assy = create_code(&engine, 4227074);
+    Instance code = {
+        .color = {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    glm_mat4_identity(code.model_matrix);
+    glm_translate(code.model_matrix, (vec3){1.0f, 0.0f, 1.0f});
+
     AssemblyHandle frustum = Raijin_create_frustum(
         &engine,
         engine.camera.proj_matrix,
@@ -147,12 +221,13 @@ int main(void) {
 
     while (!engine.window.should_close) {
         Raijin_handle_events(&engine);
-        Raijin_draw_mesh_instance(&engine, tri, tri_instance);
-        Raijin_draw_disc_instance(&engine, disc_instance);
+        // Raijin_draw_mesh_instance(&engine, tri, tri_instance);
+        // Raijin_draw_disc_instance(&engine, disc_instance);
         Raijin_draw_assembly_instance(&engine, axis_assy, global_axis);
-        Raijin_draw_assembly_instance(&engine, axis_assy, camera_axis);
-        Raijin_draw_assembly_instance(&engine, frustum, ref_camera);
-        Raijin_draw_assembly_instance(&engine, frustum, camera_frustum);
+        // Raijin_draw_assembly_instance(&engine, axis_assy, camera_axis);
+        // Raijin_draw_assembly_instance(&engine, frustum, ref_camera);
+        // Raijin_draw_assembly_instance(&engine, frustum, camera_frustum);
+        Raijin_draw_assembly_instance(&engine, code_assy, code);
         Raijin_render(&engine);
     }
 

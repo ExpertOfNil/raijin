@@ -57,7 +57,6 @@ typedef struct Assembly {
 } Assembly;
 DEFINE_DYNAMIC_ARRAY(Assembly, AssemblyArray)
 
-
 /* Function Prototypes */
 
 void Instance_set_position(Instance* instance, vec3 position);
@@ -73,9 +72,12 @@ void Mesh_realloc_instance_buffer(
 void Mesh_realloc_edge_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 );
+// 2D Shapes
+void Mesh_create_plane(Mesh* mesh);
+void Mesh_create_disc(Mesh* mesh, u32 divisions);
+// 3D Shapes
 void Mesh_create_cube(Mesh* mesh);
 void Mesh_create_sphere_uv(Mesh* mesh, u32 divisions);
-void Mesh_create_disc(Mesh* mesh, u32 divisions);
 void Mesh_create_cylinder(Mesh* mesh, u32 divisions);
 void Mesh_create_cone(Mesh* mesh, u32 divisions);
 
@@ -325,6 +327,53 @@ void Mesh_create_cube(Mesh* mesh) {
     IndexArray_push_many(&mesh->indices, CUBE_INDICES, n_indices);
     IndexArray_push_many(
         &mesh->edge_indices, CUBE_EDGE_INDICES, n_edge_indices
+    );
+}
+
+void Mesh_create_plane(Mesh* mesh) {
+    static const Vertex vertices[] = {
+        {
+            .position = {-0.5f, 0.0f, 0.5f},
+            .color = {1.0f, 1.0f, 1.0f},
+            .normal = {0.0f, 1.0f, 0.0f},
+        },
+        {
+            .position = {-0.5f, 0.0f, -0.5f},
+            .color = {1.0f, 1.0f, 1.0f},
+            .normal = {0.0f, 1.0f, 0.0f},
+        },
+        {
+            .position = {0.5f, 0.0f, -0.5f},
+            .color = {1.0f, 1.0f, 1.0f},
+            .normal = {0.0f, 1.0f, 0.0f},
+        },
+        {
+            .position = {0.5f, 0.0f, 0.5f},
+            .color = {1.0f, 1.0f, 1.0f},
+            .normal = {0.0f, 1.0f, 0.0f},
+        },
+    };
+
+    // clang-format off
+    static const u32 indices[] = {
+        0, 2, 1,
+        0, 3, 2,
+    };
+    // clang-format on
+
+    // clang-format off
+    static const u32 edge_indices[] = {
+        0, 1,
+        1, 2,
+        2, 3,
+        3, 0,
+    };
+    // clang-format on
+
+    VertexArray_push_many(&mesh->vertices, vertices, ARRAY_COUNT(vertices));
+    IndexArray_push_many(&mesh->indices, indices, ARRAY_COUNT(indices));
+    IndexArray_push_many(
+        &mesh->edge_indices, edge_indices, ARRAY_COUNT(edge_indices)
     );
 }
 
