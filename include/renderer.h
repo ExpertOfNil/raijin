@@ -1,6 +1,8 @@
 #ifndef RENDERER_H
 #define RENDERER_H
 
+#include <inttypes.h>
+
 #include "cglm/cglm.h"
 #include "cglm/mat4.h"
 #include "cglm/vec3.h"
@@ -139,7 +141,7 @@ void Renderer_update_uniforms(
     Renderer* renderer, mat4 proj_matrix, mat4 view_matrix
 );
 ReturnStatus Renderer_copy_frame_to_buffer(
-    Renderer* renderer, u32 width, u32 height, u8* buffer, u32 buffer_capacity
+    Renderer* renderer, u32 width, u32 height, u8* buffer, u64 buffer_capacity
 );
 
 void adapter_request_callback(
@@ -1071,10 +1073,13 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             texture_view = wgpuTextureCreateView(
                 renderer->render_target.headless.texture, &texture_view_desc
             );
-            if (texture_view != NULL) {
-                Renderer_render_to_view(renderer, texture_view);
-                wgpuTextureViewRelease(texture_view);
+            if (texture_view == NULL) {
+                log_error("Failed to create headless texture view");
+                status = RETURN_FAILURE;
+                break;
             }
+            Renderer_render_to_view(renderer, texture_view);
+            wgpuTextureViewRelease(texture_view);
         } break;
         case RENDER_MODE_WINDOWED: {
             texture_view_desc.label =
@@ -1101,19 +1106,22 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             texture_view = wgpuTextureCreateView(
                 surface_texture.texture, &texture_view_desc
             );
-            if (texture_view != NULL) {
-                Renderer_render_to_view(renderer, texture_view);
-                WGPUStatus present_status = wgpuSurfacePresent(
-                    renderer->render_target.windowed.surface
-                );
-                // TODO (mmckenna): Handle each status variant
-                if (present_status != WGPUStatus_Success) {
-                    log_error("Failed to present surface");
-                    status = RETURN_FAILURE;
-                }
-                wgpuTextureViewRelease(texture_view);
+            if (texture_view == NULL) {
+                log_error("Failed to create windowed texture view");
                 wgpuTextureRelease(surface_texture.texture);
+                status = RETURN_FAILURE;
+                break;
             }
+            Renderer_render_to_view(renderer, texture_view);
+            WGPUStatus present_status =
+                wgpuSurfacePresent(renderer->render_target.windowed.surface);
+            // TODO (mmckenna): Handle each status variant
+            if (present_status != WGPUStatus_Success) {
+                log_error("Failed to present surface");
+                status = RETURN_FAILURE;
+            }
+            wgpuTextureViewRelease(texture_view);
+            wgpuTextureRelease(surface_texture.texture);
         } break;
     }
     DrawCommandArray_clear(&renderer->draw_commands);
@@ -1274,7 +1282,7 @@ void Renderer_update_uniforms(
 }
 
 ReturnStatus Renderer_copy_frame_to_buffer(
-    Renderer* renderer, u32 width, u32 height, u8* buffer, u32 buffer_capacity
+    Renderer* renderer, u32 width, u32 height, u8* buffer, u64 buffer_capacity
 ) {
     if (buffer == NULL) {
         log_error("Copy frame destination buffer was NULL.");
@@ -1289,21 +1297,44 @@ ReturnStatus Renderer_copy_frame_to_buffer(
     }
 
     // RGBA8 assumed
-    u32 bytes_per_pixel = 4;
-    u32 buffer_size = width * height * bytes_per_pixel;
+    const u64 bytes_per_pixel = 4;
+    const u64 alignment = 256;
+    const u64 unpadded_bytes_per_row = (u64)width * bytes_per_pixel;
 
-    if (buffer_capacity < buffer_size) {
+    if (unpadded_bytes_per_row > UINT32_MAX - (alignment - 1)) {
         log_error(
-            "Buffer of size %d is too small.  Expected %d minimum.",
+            "Unexpected unpadded bytes per row: %" PRIu64,
+            unpadded_bytes_per_row
+        );
+        return RETURN_FAILURE;
+    }
+
+    const u64 padded_bytes_per_row =
+        (unpadded_bytes_per_row + alignment - 1) & ~(alignment - 1);
+
+    if (height != 0 && padded_bytes_per_row > UINT64_MAX / (u64)height) {
+        log_error(
+            "Unexpected padded bytes per row: %" PRIu64, padded_bytes_per_row
+        );
+        return RETURN_FAILURE;
+    }
+
+    const u64 staging_buffer_size = padded_bytes_per_row * (u64)height;
+    const u64 output_buffer_size = unpadded_bytes_per_row * (u64)height;
+
+    if (buffer_capacity < output_buffer_size) {
+        log_error(
+            "Buffer of size %" PRIu64 " is too small.  Expected %" PRIu64
+            " minimum.",
             buffer_capacity,
-            buffer_size
+            output_buffer_size
         );
         return RETURN_FAILURE;
     }
 
     WGPUBuffer staging_buffer = create_buffer(
         renderer->device,
-        buffer_size,
+        staging_buffer_size,
         WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead,
         "Readback Staging Buffer"
     );
@@ -1317,6 +1348,10 @@ ReturnStatus Renderer_copy_frame_to_buffer(
     };
     WGPUCommandEncoder encoder =
         wgpuDeviceCreateCommandEncoder(renderer->device, &encoder_desc);
+    if (!encoder) {
+        wgpuBufferRelease(staging_buffer);
+        return RETURN_FAILURE;
+    }
 
     WGPUTexelCopyTextureInfo src = {
         .texture = renderer->render_target.headless.texture,
@@ -1329,7 +1364,7 @@ ReturnStatus Renderer_copy_frame_to_buffer(
         .buffer = staging_buffer,
         .layout = {
             .offset = 0,
-            .bytesPerRow = width * 4,
+            .bytesPerRow = (u32)padded_bytes_per_row,
             .rowsPerImage = height,
         },
     };
@@ -1342,7 +1377,14 @@ ReturnStatus Renderer_copy_frame_to_buffer(
     };
     WGPUCommandBuffer cmd_buffer =
         wgpuCommandEncoderFinish(encoder, &cmd_buf_desc);
+    if (!cmd_buffer) {
+        wgpuCommandEncoderRelease(encoder);
+        wgpuBufferRelease(staging_buffer);
+        return RETURN_FAILURE;
+    }
     wgpuQueueSubmit(renderer->queue, 1, &cmd_buffer);
+    wgpuCommandBufferRelease(cmd_buffer);
+    wgpuCommandEncoderRelease(encoder);
 
     WgpuBufferMapContext buffer_map_ctx = {
         .completed = false,
@@ -1354,8 +1396,13 @@ ReturnStatus Renderer_copy_frame_to_buffer(
         .userdata1 = &buffer_map_ctx,
     };
     WGPUFuture future = wgpuBufferMapAsync(
-        staging_buffer, WGPUMapMode_Read, 0, buffer_size, map_callback_info
+        staging_buffer,
+        WGPUMapMode_Read,
+        0,
+        staging_buffer_size,
+        map_callback_info
     );
+    (void)future;
 
     // WGPUFutureWaitInfo wait_info = {
     //     .future = future,
@@ -1368,16 +1415,26 @@ ReturnStatus Renderer_copy_frame_to_buffer(
         wgpuInstanceProcessEvents(renderer->instance);
     }
 
+    if (buffer_map_ctx.status != WGPUMapAsyncStatus_Success) {
+        wgpuBufferRelease(staging_buffer);
+        return RETURN_FAILURE;
+    }
+
     const void* mapped_data =
-        wgpuBufferGetConstMappedRange(staging_buffer, 0, buffer_size);
+        wgpuBufferGetConstMappedRange(staging_buffer, 0, staging_buffer_size);
     if (mapped_data != NULL) {
-        memcpy(buffer, mapped_data, buffer_size);
+        const u8* source = mapped_data;
+        for (u32 row = 0; row < height; ++row) {
+            memcpy(
+                buffer + (u64)row * unpadded_bytes_per_row,
+                source + (u64)row * padded_bytes_per_row,
+                unpadded_bytes_per_row
+            );
+        }
     }
 
     wgpuBufferUnmap(staging_buffer);
     wgpuBufferRelease(staging_buffer);
-    wgpuCommandBufferRelease(cmd_buffer);
-    wgpuCommandEncoderRelease(encoder);
 
     return mapped_data == NULL ? RETURN_FAILURE : RETURN_SUCCESS;
 }

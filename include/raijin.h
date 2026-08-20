@@ -90,8 +90,10 @@ void Raijin_draw_cone(
 );
 
 ReturnStatus Raijin_copy_frame_to_buffer(
-    Raijin* engine, u32 width, u32 height, u8* buffer, u32 buffer_capacity
+    Raijin* engine, u32 width, u32 height, u8* buffer, u64 buffer_capacity
 );
+
+ReturnStatus Raijin_render(Raijin* engine);
 
 void Raijin_destroy(Raijin* engine);
 
@@ -280,10 +282,7 @@ AssemblyHandle Raijin_create_axis(
 }
 
 AssemblyHandle Raijin_create_frustum(
-    Raijin* engine,
-    mat4 proj_matrix,
-    float line_radius,
-    vec4 color
+    Raijin* engine, mat4 proj_matrix, float line_radius, vec4 color
 ) {
     AssemblyHandle frustum = Raijin_create_assembly(engine);
     mat4 inv_proj;
@@ -514,7 +513,7 @@ void Raijin_draw_cone(
 }
 
 ReturnStatus Raijin_copy_frame_to_buffer(
-    Raijin* engine, u32 width, u32 height, u8* buffer, u32 buffer_capacity
+    Raijin* engine, u32 width, u32 height, u8* buffer, u64 buffer_capacity
 ) {
     return Renderer_copy_frame_to_buffer(
         &engine->renderer, width, height, buffer, buffer_capacity

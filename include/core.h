@@ -45,7 +45,7 @@ typedef struct MouseState {
 
 WGPUBuffer create_buffer(
     WGPUDevice device,
-    const u32 size,
+    const u64 size,
     const WGPUBufferUsage usage,
     const char* label
 );
@@ -64,7 +64,7 @@ ReturnStatus load_shader(const char* path, String* buffer);
  */
 WGPUBuffer create_buffer(
     WGPUDevice device,
-    const u32 size,
+    const u64 size,
     const WGPUBufferUsage usage,
     const char* label
 ) {
