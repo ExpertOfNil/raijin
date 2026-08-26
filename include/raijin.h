@@ -117,6 +117,7 @@ ReturnStatus Raijin_init(
             .position = {0.0f, 0.0f},
         };
         if (!SdlWindow_init(&engine->window, title, width, height)) {
+            wgpuInstanceRelease(instance);
             return RETURN_FAILURE;
         }
 
@@ -125,6 +126,7 @@ ReturnStatus Raijin_init(
             create_surface_sdl3(instance, engine->window.handle);
         if (surface == NULL) {
             log_error("Failed to create surface");
+            SdlWindow_destroy(&engine->window);
             wgpuInstanceRelease(instance);
             return RETURN_FAILURE;
         }
@@ -133,8 +135,6 @@ ReturnStatus Raijin_init(
             &engine->renderer, instance, surface, width, height
         );
         if (status != RETURN_SUCCESS) {
-            Renderer_destroy(&engine->renderer);
-            wgpuInstanceRelease(instance);
             Raijin_destroy(engine);
             return RETURN_FAILURE;
         }
@@ -142,14 +142,20 @@ ReturnStatus Raijin_init(
         ReturnStatus status =
             Renderer_init_headless(&engine->renderer, instance, width, height);
         if (status != RETURN_SUCCESS) {
-            Renderer_destroy(&engine->renderer);
-            wgpuInstanceRelease(instance);
             Raijin_destroy(engine);
             return RETURN_FAILURE;
         }
     }
 
     PanOrbitCamera_init(&engine->camera);
+
+    if (width > 0 && height > 0) {
+        engine->camera.aspect = (f32)width / (f32)height;
+        glm_perspective_resize(
+            engine->camera.aspect, engine->camera.proj_matrix
+        );
+    }
+
     Renderer_update_uniforms(
         &engine->renderer,
         engine->camera.proj_matrix,
@@ -170,11 +176,15 @@ void Raijin_destroy(Raijin* engine) {
         AssemblyComponentArray_free(&assembly->components);
         log_debug("Assy component %d free.", i);
     }
+
     AssemblyArray_free(&engine->assemblies);
     log_debug("Assy array free.");
     Renderer_destroy(&engine->renderer);
     log_debug("Renderer free.");
-    SdlWindow_destroy(&engine->window);
+
+    if (engine->window.handle != NULL) {
+        SdlWindow_destroy(&engine->window);
+    }
 }
 // #endif
 

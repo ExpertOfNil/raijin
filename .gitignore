@@ -5,6 +5,10 @@ nob.old
 AGENTS.md
 .cache/
 *.ppm
+*.pam
+*.png
+*.jpeg
+*.jpg
 *.gif
 zig-out/
 .zig-cache/

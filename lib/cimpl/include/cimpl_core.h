@@ -69,6 +69,9 @@ static inline void* cimpl_aligned_realloc(
         alignment = sizeof(void*);
     }
 
+    if (new_size > SIZE_MAX - (alignment - 1)) {
+        return NULL;
+    }
     size_t alloc_size = cimpl_align_up(new_size, alignment);
 
     void* new_ptr = aligned_alloc(alignment, alloc_size);
@@ -85,79 +88,103 @@ static inline void* cimpl_aligned_realloc(
 
 #define DEFAULT_ARRAY_CAPACITY 64
 #define ARRAY_COUNT(arr) (sizeof((arr)) / sizeof((arr)[0]))
-#define DEFINE_DYNAMIC_ARRAY(type, name)                               \
-    typedef struct name {                                              \
-        type* items;                                                   \
-        u32 count;                                                     \
-        u32 capacity;                                                  \
-    } name;                                                            \
-                                                                       \
-    static inline void name##_init(name* arr) {                        \
-        arr->items = NULL;                                             \
-        arr->count = 0;                                                \
-        arr->capacity = 0;                                             \
-    }                                                                  \
-                                                                       \
-    static inline CimplReturn name##_reserve(name* arr, size_t cap) {  \
-        if ((cap) > (arr)->capacity) {                                 \
-            size_t old_capacity = (arr)->capacity;                     \
-            if ((arr)->capacity == 0) {                                \
-                (arr)->capacity = DEFAULT_ARRAY_CAPACITY;              \
-            }                                                          \
-            while ((cap) > (arr)->capacity) {                          \
-                (arr)->capacity *= 2;                                  \
-            }                                                          \
-            size_t old_size = old_capacity * sizeof(*(arr)->items);    \
-            size_t new_size = (arr)->capacity * sizeof(*(arr)->items); \
-            size_t alignment = _Alignof(type);                         \
-            void* new_items = cimpl_aligned_realloc(                   \
-                arr->items, old_size, new_size, alignment              \
-            );                                                         \
-            if (new_items == NULL) {                                   \
-                fprintf(stderr, "ARRAY_RESERVE: Out of memory\n");     \
-                return RETURN_ERR;                                     \
-            }                                                          \
-            arr->items = new_items;                                    \
-        }                                                              \
-        return RETURN_OK;                                              \
-    }                                                                  \
-                                                                       \
-    static inline CimplReturn name##_push(name* arr, type item) {      \
-        if (name##_reserve((arr), (arr)->count + 1) != RETURN_OK) {    \
-            return RETURN_ERR;                                         \
-        }                                                              \
-        arr->items[arr->count++] = item;                               \
-        return RETURN_OK;                                              \
-    }                                                                  \
-                                                                       \
-    static inline CimplReturn name##_push_many(                        \
-        name* arr, const type* new_items, u32 new_items_count          \
-    ) {                                                                \
-        if (name##_reserve((arr), (arr)->count + (new_items_count)) != \
-            RETURN_OK) {                                               \
-            return RETURN_ERR;                                         \
-        }                                                              \
-        memcpy(                                                        \
-            (arr)->items + (arr)->count,                               \
-            (new_items),                                               \
-            (new_items_count) * sizeof(*(arr)->items)                  \
-        );                                                             \
-        (arr)->count += (new_items_count);                             \
-        return RETURN_OK;                                              \
-    }                                                                  \
-                                                                       \
-    static inline void name##_clear(name* arr) {                       \
-        memset(arr->items, 0, sizeof(*(arr)->items) * arr->count);     \
-        arr->count = 0;                                                \
-    }                                                                  \
-                                                                       \
-    static inline void name##_free(name* arr) {                        \
-        if (arr->items) {                                              \
-            CIMPL_FREE(arr->items);                                    \
-            arr->items = NULL;                                         \
-        }                                                              \
-        arr->count = 0;                                                \
-        arr->capacity = 0;                                             \
+#define DEFINE_DYNAMIC_ARRAY(type, name)                                      \
+    typedef struct name {                                                     \
+        type* items;                                                          \
+        u32 count;                                                            \
+        u32 capacity;                                                         \
+    } name;                                                                   \
+                                                                              \
+    static inline void name##_init(name* arr) {                               \
+        arr->items = NULL;                                                    \
+        arr->count = 0;                                                       \
+        arr->capacity = 0;                                                    \
+    }                                                                         \
+                                                                              \
+    static inline CimplReturn name##_reserve(name* arr, size_t cap) {         \
+        if (cap <= arr->capacity) {                                           \
+            return RETURN_OK;                                                 \
+        }                                                                     \
+        if (cap > UINT32_MAX) {                                               \
+            fprintf(stderr, "ARRAY_RESERVE: Capacity overflow\n");            \
+            return RETURN_ERR;                                                \
+        }                                                                     \
+        size_t old_capacity = arr->capacity;                                  \
+        size_t new_capacity = old_capacity;                                   \
+        if (new_capacity == 0) {                                              \
+            new_capacity = DEFAULT_ARRAY_CAPACITY;                            \
+        }                                                                     \
+        while (new_capacity < cap) {                                          \
+            if (new_capacity > UINT32_MAX / 2) {                              \
+                new_capacity = UINT32_MAX;                                    \
+                break;                                                        \
+            }                                                                 \
+            new_capacity *= 2;                                                \
+        }                                                                     \
+        if (old_capacity > SIZE_MAX / sizeof(*arr->items) ||                  \
+            new_capacity > SIZE_MAX / sizeof(*arr->items)) {                  \
+            fprintf(stderr, "ARRAY_RESERVE: Allocation overflow\n");          \
+            return RETURN_ERR;                                                \
+        }                                                                     \
+        size_t old_size = old_capacity * sizeof(*arr->items);                 \
+        size_t new_size = new_capacity * sizeof(*arr->items);                 \
+        size_t alignment = _Alignof(type);                                    \
+        void* new_items =                                                     \
+            cimpl_aligned_realloc(arr->items, old_size, new_size, alignment); \
+        if (new_items == NULL) {                                              \
+            fprintf(stderr, "ARRAY_RESERVE: Out of memory\n");                \
+            return RETURN_ERR;                                                \
+        }                                                                     \
+        arr->items = new_items;                                               \
+        arr->capacity = (u32)new_capacity;                                    \
+        return RETURN_OK;                                                     \
+    }                                                                         \
+                                                                              \
+    static inline CimplReturn name##_push(name* arr, type item) {             \
+        if (arr->count == UINT32_MAX) {                                       \
+            fprintf(stderr, "ARRAY_PUSH: Capacity overflow\n");               \
+            return RETURN_ERR;                                                \
+        }                                                                     \
+        if (name##_reserve(arr, (size_t)arr->count + 1) != RETURN_OK) {       \
+            return RETURN_ERR;                                                \
+        }                                                                     \
+        arr->items[arr->count++] = item;                                      \
+        return RETURN_OK;                                                     \
+    }                                                                         \
+                                                                              \
+    static inline CimplReturn name##_push_many(                               \
+        name* arr, const type* new_items, u32 new_items_count                 \
+    ) {                                                                       \
+        if ((size_t)new_items_count >                                         \
+            (size_t)UINT32_MAX - (size_t)arr->count) {                        \
+            fprintf(stderr, "ARRAY_PUSH_MANY: Capacity overflow\n");          \
+            return RETURN_ERR;                                                \
+        }                                                                     \
+        size_t required_count = (size_t)arr->count + (size_t)new_items_count; \
+        if (name##_reserve(arr, required_count) != RETURN_OK) {               \
+            return RETURN_ERR;                                                \
+        }                                                                     \
+        memcpy(                                                               \
+            arr->items + arr->count,                                          \
+            new_items,                                                        \
+            (size_t)new_items_count * sizeof(*arr->items)                     \
+        );                                                                    \
+        arr->count += new_items_count;                                        \
+        return RETURN_OK;                                                     \
+    }                                                                         \
+                                                                              \
+    static inline void name##_clear(name* arr) {                              \
+        memset(arr->items, 0, sizeof(*(arr)->items) * arr->count);            \
+        arr->count = 0;                                                       \
+    }                                                                         \
+                                                                              \
+    static inline void name##_free(name* arr) {                               \
+        if (arr->items) {                                                     \
+            CIMPL_FREE(arr->items);                                           \
+            arr->items = NULL;                                                \
+        }                                                                     \
+        arr->count = 0;                                                       \
+        arr->capacity = 0;                                                    \
     }
 
 /*** FUNCTION DECLARATIONS ***/

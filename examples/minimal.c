@@ -1,7 +1,51 @@
-#include <inttypes.h>
 #include <raijin/raijin.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+static int write_pam_file(
+    const uint8_t* pixel_buf,
+    uint64_t pixel_capacity,
+    uint32_t width,
+    uint32_t height,
+    const char* filename
+) {
+    FILE* fp = fopen(filename, "wb");
+    if (!fp) {
+        fprintf(stderr, "--> ERROR: Failed to open file: %s\n", filename);
+        return -1;
+    }
+
+    // Write header
+    int result = fprintf(
+        fp,
+        "P7\n"
+        "WIDTH %u\n"
+        "HEIGHT %u\n"
+        "DEPTH 4\n"
+        "MAXVAL 255\n"
+        "TUPLTYPE RGB_ALPHA\n"
+        "ENDHDR\n",
+        width,
+        height
+    );
+    if (result <= 0) {
+        fprintf(
+            stderr, "--> ERROR: Failed to write PAM header: %s\n", filename
+        );
+        fclose(fp);
+        return -1;
+    }
+
+    size_t written = fwrite(pixel_buf, 1, pixel_capacity, fp);
+    if ((uint64_t)written != pixel_capacity) {
+        fprintf(stderr, "--> ERROR: Failed to write PAM body: %s\n", filename);
+        fclose(fp);
+        return -1;
+    }
+
+    fclose(fp);
+    return 0;
+}
 
 int main(void) {
     RaijinContextDesc desc;
@@ -12,15 +56,33 @@ int main(void) {
 
     int exit_status = EXIT_SUCCESS;
     RaijinContext* ctx = NULL;
-    RaijinContext* windowed_ctx = NULL;
     uint8_t* pixel_buf = NULL;
 
+    // Create context
     RaijinResult result = raijin_context_create(&desc, &ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
             "--> ERROR: Failed to initialize Raijin context: %u\n",
             (uint32_t)result
+        );
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    // Create cube instance
+    RaijinInstance cube;
+    raijin_instance_init(&cube);
+
+    cube.color[0] = 0.0f;
+    cube.color[1] = 1.0f;
+    cube.color[2] = 0.0f;
+    cube.color[3] = 1.0f;
+
+    result = raijin_context_draw_cube(ctx, &cube);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(
+            stderr, "--> ERROR: Failed to draw cube: %u\n", (uint32_t)result
         );
         exit_status = EXIT_FAILURE;
         goto cleanup;
@@ -35,6 +97,7 @@ int main(void) {
         goto cleanup;
     }
 
+    // Read frame to buffer
     uint64_t pixel_capacity = 0;
     result = raijin_context_readback_size(ctx, &pixel_capacity);
     if (result != RAIJIN_SUCCESS) {
@@ -46,12 +109,6 @@ int main(void) {
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
-    if (pixel_capacity !=
-        (uint64_t)desc.width * (uint64_t)desc.height * UINT64_C(4)) {
-        exit_status = EXIT_FAILURE;
-        goto cleanup;
-    }
-    printf("--> INFO: pixel_capacity = %" PRIu64 "\n", pixel_capacity);
 
     pixel_buf = (uint8_t*)malloc((size_t)pixel_capacity);
     if (pixel_buf == NULL) {
@@ -71,42 +128,8 @@ int main(void) {
         goto cleanup;
     }
 
-    // Expected error
-    result = raijin_context_read_rgba8(ctx, pixel_buf, pixel_capacity - 1);
-    uint32_t expected_result = RAIJIN_ERROR_BUFFER_TOO_SMALL;
-    if (result != expected_result) {
-        fprintf(
-            stderr,
-            "--> ERROR: Unexpected result: expected=%u, got=%u\n",
-            expected_result,
-            (uint32_t)result
-        );
-        exit_status = EXIT_FAILURE;
-        goto cleanup;
-    }
-
-    // Expected error
-    RaijinContextDesc windowed_desc = desc;
-    windowed_desc.render_mode = RAIJIN_RENDER_MODE_WINDOWED;
-    result = raijin_context_create(&windowed_desc, &windowed_ctx);
-    if (result != RAIJIN_SUCCESS) {
-        fprintf(
-            stderr,
-            "--> ERROR: Failed to initialize Raijin context: %u\n",
-            (uint32_t)result
-        );
-        exit_status = EXIT_FAILURE;
-        goto cleanup;
-    }
-    result = raijin_context_readback_size(windowed_ctx, &pixel_capacity);
-    expected_result = RAIJIN_ERROR_INVALID_STATE;
-    if (result != expected_result) {
-        fprintf(
-            stderr,
-            "--> ERROR: Unexpected result: expected=%u, got=%u\n",
-            expected_result,
-            (uint32_t)result
-        );
+    const char* fname = "frame.pam";
+    if (write_pam_file(pixel_buf, pixel_capacity, desc.width, desc.height, fname) != 0) {
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
@@ -114,6 +137,5 @@ int main(void) {
 cleanup:
     if (pixel_buf) free(pixel_buf);
     raijin_context_destroy(ctx);
-    raijin_context_destroy(windowed_ctx);
     return exit_status;
 }

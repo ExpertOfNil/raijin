@@ -2,6 +2,7 @@
 #define RENDERER_H
 
 #include <inttypes.h>
+#include <stddef.h>
 
 #include "cglm/cglm.h"
 #include "cglm/mat4.h"
@@ -10,6 +11,12 @@
 #include "mesh.h"
 #include "webgpu.h"
 #include "wgpu.h"
+
+extern const unsigned char raijin_solid_shader_wgsl[];
+extern const size_t raijin_solid_shader_wgsl_size;
+
+extern const unsigned char raijin_edges_shader_wgsl[];
+extern const size_t raijin_edges_shader_wgsl_size;
 
 /* Types */
 
@@ -42,6 +49,20 @@ typedef struct WgpuBufferMapContext {
     bool completed;
     WGPUStringView message;
 } WgpuBufferMapContext;
+
+typedef struct RendererPipelineDesc {
+    const char* label;
+    const unsigned char* shader_data;
+    size_t shader_size;
+    WGPUTextureFormat texture_format;
+    WGPUTextureFormat depth_texture_format;
+    const WGPUBindGroupLayout bind_group_layout;
+    WGPUPrimitiveTopology topology;
+    WGPUCullMode cull_mode;
+    WGPUCompareFunction depth_compare;
+    bool depth_write_enabled;
+    bool encode_output_srgb;
+} RendererPipelineDesc;
 
 typedef struct Renderer {
     bool enable_edges;
@@ -83,7 +104,7 @@ typedef struct Renderer {
 
 void Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer);
 MeshHandle Renderer_register_mesh(Renderer* renderer, Mesh* mesh_template);
-void Renderer_create_depth_texture(
+ReturnStatus Renderer_create_depth_texture(
     Renderer* renderer,
     u32 width,
     u32 height,
@@ -93,13 +114,7 @@ void Renderer_create_depth_texture(
 ReturnStatus Renderer_create_render_pipeline(
     Renderer* renderer,
     WGPURenderPipeline* pipeline,
-    const char* label,
-    const char* shader_path,
-    const WGPUTextureFormat texture_format,
-    const WGPUTextureFormat depth_texture_format,
-    const WGPUBindGroupLayout bind_group_layout,
-    const WGPUPrimitiveTopology topology,
-    const WGPUCullMode cull_mode
+    const RendererPipelineDesc* desc
 );
 ReturnStatus Renderer_init_windowed(
     Renderer* renderer,
@@ -274,13 +289,14 @@ static void Renderer_register_builtin_meshes(Renderer* renderer) {
     renderer->builtin.cone = Renderer_register_mesh(renderer, &cone_mesh);
 }
 
-void Renderer_create_depth_texture(
+ReturnStatus Renderer_create_depth_texture(
     Renderer* renderer,
     u32 width,
     u32 height,
     const char* label,
     WGPUTextureFormat format
 ) {
+    // Texture creation
     WGPUTextureDescriptor depth_texture_desc = {
         .label = {label, WGPU_STRLEN},
         .size =
@@ -297,15 +313,14 @@ void Renderer_create_depth_texture(
         .viewFormats = &format,
         .viewFormatCount = 1,
     };
-    if (renderer->depth_texture != NULL) {
-        wgpuTextureRelease(renderer->depth_texture);
-    }
-    renderer->depth_texture =
+    WGPUTexture new_texture =
         wgpuDeviceCreateTexture(renderer->device, &depth_texture_desc);
-
-    if (renderer->depth_texture_view != NULL) {
-        wgpuTextureViewRelease(renderer->depth_texture_view);
+    if (new_texture == NULL) {
+        log_error("Failed to create new depth texture");
+        return RETURN_FAILURE;
     }
+
+    // Texture view creation
     char view_label[256] = {0};
     snprintf(view_label, sizeof(view_label), "%s View", label);
     WGPUTextureViewDescriptor depth_texture_view_desc = {
@@ -317,34 +332,44 @@ void Renderer_create_depth_texture(
         .baseArrayLayer = 0,
         .arrayLayerCount = 1,
     };
-    renderer->depth_texture_view = wgpuTextureCreateView(
-        renderer->depth_texture, &depth_texture_view_desc
-    );
+    WGPUTextureView new_view =
+        wgpuTextureCreateView(new_texture, &depth_texture_view_desc);
+    if (new_view == NULL) {
+        log_error("Failed to create new depth texture view");
+        wgpuTextureRelease(new_texture);
+        return RETURN_FAILURE;
+    }
+
+    if (renderer->depth_texture_view != NULL) {
+        wgpuTextureViewRelease(renderer->depth_texture_view);
+    }
+    if (renderer->depth_texture != NULL) {
+        wgpuTextureRelease(renderer->depth_texture);
+    }
+
+    renderer->depth_texture = new_texture;
+    renderer->depth_texture_view = new_view;
+    return RETURN_SUCCESS;
 }
 
 // Expects "vs_main" and "fs_main"
 ReturnStatus Renderer_create_render_pipeline(
     Renderer* renderer,
     WGPURenderPipeline* pipeline,
-    const char* label,
-    const char* shader_path,
-    const WGPUTextureFormat texture_format,
-    const WGPUTextureFormat depth_texture_format,
-    const WGPUBindGroupLayout bind_group_layout,
-    const WGPUPrimitiveTopology topology,
-    const WGPUCullMode cull_mode
+    const RendererPipelineDesc* desc
 ) {
-    String shader_src = {0};
-    ReturnStatus shader_load_status = load_shader(shader_path, &shader_src);
-    if (shader_load_status != RETURN_SUCCESS) {
-        log_error("Failed to load shader");
-        return RETURN_FAILURE;
-    }
+    if (!desc->shader_data || desc->shader_size == 0) return RETURN_FAILURE;
+
     char label_buffer[256] = {0};
-    snprintf(label_buffer, sizeof(label_buffer), "%s Shader Module", label);
+    snprintf(
+        label_buffer, sizeof(label_buffer), "%s Shader Module", desc->label
+    );
     WGPUShaderSourceWGSL wgsl_desc = {
         .chain.sType = WGPUSType_ShaderSourceWGSL,
-        .code = {.data = shader_src.items, shader_src.count}
+        .code = {
+            .data = (const char*)desc->shader_data,
+            .length = desc->shader_size,
+        }
     };
     WGPUShaderModuleDescriptor shader_desc = {
         .nextInChain = &wgsl_desc.chain,
@@ -352,6 +377,11 @@ ReturnStatus Renderer_create_render_pipeline(
     };
     WGPUShaderModule shader =
         wgpuDeviceCreateShaderModule(renderer->device, &shader_desc);
+    if (!shader) {
+        log_error("Failed to create solid shader module");
+        return RETURN_FAILURE;
+    }
+
     WGPUVertexBufferLayout vertex_buffer_layouts[] = {
         Vertex_desc(),
         Instance_desc(),
@@ -377,40 +407,52 @@ ReturnStatus Renderer_create_render_pipeline(
         },
     };
     WGPUColorTargetState color_target_state = {
-        .format = texture_format,
+        .format = desc->texture_format,
         .blend = &blend_state,
         .writeMask = WGPUColorWriteMask_All,
+    };
+    WGPUConstantEntry fragment_constant = {
+        .key = {"encode_output_srgb", WGPU_STRLEN},
+        .value = desc->encode_output_srgb ? 1.0 : 0.0,
     };
     WGPUFragmentState frag_state = {
         .module = shader,
         .entryPoint = {"fs_main", WGPU_STRLEN},
+        .constantCount = 1,
+        .constants = &fragment_constant,
         .targets = &color_target_state,
         .targetCount = 1,
     };
     WGPUDepthStencilState depth_pencil_state = {
-        .format = depth_texture_format,
-        .depthWriteEnabled = true,
-        .depthCompare = WGPUCompareFunction_Less,
+        .format = desc->depth_texture_format,
+        .depthWriteEnabled = desc->depth_write_enabled,
+        .depthCompare = desc->depth_compare,
     };
-    snprintf(label_buffer, sizeof(label_buffer), "%s Layout", label);
+    snprintf(label_buffer, sizeof(label_buffer), "%s Layout", desc->label);
     WGPUPipelineLayoutDescriptor solid_pipeline_layout_desc = {
         .label = {label_buffer, WGPU_STRLEN},
-        .bindGroupLayouts = &bind_group_layout,
+        .bindGroupLayouts = &desc->bind_group_layout,
         .bindGroupLayoutCount = 1,
     };
+    WGPUPipelineLayout solid_pipeline_layout = wgpuDeviceCreatePipelineLayout(
+        renderer->device, &solid_pipeline_layout_desc
+    );
+    if (!solid_pipeline_layout) {
+        log_error("Failed to create solid pipeline layout");
+        wgpuShaderModuleRelease(shader);
+        return RETURN_FAILURE;
+    }
     WGPURenderPipelineDescriptor solid_pipeline_desc = {
-        .label = {label, WGPU_STRLEN},
-        .layout = wgpuDeviceCreatePipelineLayout(
-            renderer->device, &solid_pipeline_layout_desc
-        ),
+        .label = {desc->label, WGPU_STRLEN},
+        .layout = solid_pipeline_layout,
         .vertex = vert_state,
         .fragment = &frag_state,
         .depthStencil = &depth_pencil_state,
         .primitive =
             (WGPUPrimitiveState){
-                .topology = topology,
+                .topology = desc->topology,
                 .frontFace = WGPUFrontFace_CCW,
-                .cullMode = cull_mode,
+                .cullMode = desc->cull_mode,
                 .unclippedDepth = false,
             },
         .multisample = (WGPUMultisampleState){
@@ -421,7 +463,12 @@ ReturnStatus Renderer_create_render_pipeline(
     };
     *pipeline =
         wgpuDeviceCreateRenderPipeline(renderer->device, &solid_pipeline_desc);
-    String_free(&shader_src);
+    wgpuPipelineLayoutRelease(solid_pipeline_layout);
+    wgpuShaderModuleRelease(shader);
+    if (*pipeline == NULL) {
+        log_error("Failed to create solid render pipeline");
+        return RETURN_FAILURE;
+    }
     return RETURN_SUCCESS;
 }
 
@@ -435,6 +482,7 @@ ReturnStatus Renderer_init_windowed(
     renderer->render_mode = RENDER_MODE_WINDOWED;
     WgpuCallbackContext cb_ctx = {
         .completed = false,
+        .success = false,
         .adapter = &renderer->adapter,
         .device = &renderer->device,
     };
@@ -443,9 +491,6 @@ ReturnStatus Renderer_init_windowed(
     renderer->render_target.windowed.surface = surface;
 
     // Adapter request
-    if (renderer->adapter != NULL) {
-        wgpuAdapterRelease(renderer->adapter);
-    }
     WGPURequestAdapterOptions adapter_options = {
         // Don't need a surface
         .compatibleSurface = renderer->render_target.windowed.surface,
@@ -455,7 +500,11 @@ ReturnStatus Renderer_init_windowed(
     WGPURequestAdapterCallbackInfo adapter_cb_info = {
         .callback = adapter_request_callback,
         .userdata1 = &cb_ctx,
+        .mode = WGPUCallbackMode_AllowProcessEvents,
     };
+
+    cb_ctx.completed = false;
+    cb_ctx.success = false;
     wgpuInstanceRequestAdapter(instance, &adapter_options, adapter_cb_info);
 
     while (!cb_ctx.completed) {
@@ -467,15 +516,15 @@ ReturnStatus Renderer_init_windowed(
     log_debug("Adapter request successful");
 
     // Device request
-    if (renderer->device != NULL) {
-        wgpuDeviceRelease(renderer->device);
-    }
     WGPUDeviceDescriptor device_desc = {.label = {"Device", WGPU_STRLEN}};
     WGPURequestDeviceCallbackInfo device_cb_info = {
         .callback = device_request_callback,
         .userdata1 = &cb_ctx,
+        .mode = WGPUCallbackMode_AllowProcessEvents,
     };
 
+    cb_ctx.completed = false;
+    cb_ctx.success = false;
     wgpuAdapterRequestDevice(renderer->adapter, &device_desc, device_cb_info);
 
     while (!cb_ctx.completed) {
@@ -483,27 +532,60 @@ ReturnStatus Renderer_init_windowed(
     }
     if (!cb_ctx.success) {
         log_error("Device request error");
-        wgpuAdapterRelease(renderer->adapter);
         return RETURN_FAILURE;
     }
     log_debug("Device request successful");
 
     // Get device queue
     renderer->queue = wgpuDeviceGetQueue(renderer->device);
+    if (renderer->queue == NULL) {
+        log_error("Failed to get device queue");
+        return RETURN_FAILURE;
+    }
 
     // Create render target
     WGPUSurfaceCapabilities surface_caps = {0};
-    wgpuSurfaceGetCapabilities(
+    WGPUStatus surface_caps_status = wgpuSurfaceGetCapabilities(
         renderer->render_target.windowed.surface,
         renderer->adapter,
         &surface_caps
     );
-    if (surface_caps.formatCount == 0) {
+    if (surface_caps_status != WGPUStatus_Success ||
+        surface_caps.formatCount == 0) {
         log_error("No supported surface formats found");
+        wgpuSurfaceCapabilitiesFreeMembers(surface_caps);
         return RETURN_FAILURE;
     }
     log_debug("%ld surface formats found.", surface_caps.formatCount);
-    WGPUTextureFormat texture_format = surface_caps.formats[0];
+    WGPUTextureFormat texture_format = WGPUTextureFormat_Undefined;
+    bool output_requires_srgb_encoding = false;
+
+    for (size_t i = 0; i < surface_caps.formatCount; ++i) {
+        WGPUTextureFormat format = surface_caps.formats[i];
+        if (format == WGPUTextureFormat_BGRA8UnormSrgb ||
+            format == WGPUTextureFormat_RGBA8UnormSrgb) {
+            texture_format = format;
+            break;
+        }
+    }
+    if (texture_format == WGPUTextureFormat_Undefined) {
+        for (size_t i = 0; i < surface_caps.formatCount; ++i) {
+            WGPUTextureFormat format = surface_caps.formats[i];
+            if (format == WGPUTextureFormat_BGRA8Unorm ||
+                format == WGPUTextureFormat_RGBA8Unorm) {
+                texture_format = format;
+                output_requires_srgb_encoding = true;
+                break;
+            }
+        }
+    }
+    if (texture_format == WGPUTextureFormat_Undefined) {
+        log_error("No supported SDR surface formats found");
+        wgpuSurfaceCapabilitiesFreeMembers(surface_caps);
+        return RETURN_FAILURE;
+    }
+    wgpuSurfaceCapabilitiesFreeMembers(surface_caps);
+
     renderer->render_target.windowed.surface_config =
         (WGPUSurfaceConfiguration){
             .usage = WGPUTextureUsage_RenderAttachment,
@@ -525,9 +607,11 @@ ReturnStatus Renderer_init_windowed(
 
     // Create depth texture
     WGPUTextureFormat depth_texture_format = WGPUTextureFormat_Depth24Plus;
-    Renderer_create_depth_texture(
-        renderer, width, height, "Depth Texture", depth_texture_format
-    );
+    if (Renderer_create_depth_texture(
+            renderer, width, height, "Depth Texture", depth_texture_format
+        ) != RETURN_SUCCESS) {
+        return RETURN_FAILURE;
+    }
 
     // Create uniform buffer
     mat4 proj_matrix = {0};
@@ -544,6 +628,10 @@ ReturnStatus Renderer_init_windowed(
     };
     renderer->uniform_buffer =
         wgpuDeviceCreateBuffer(renderer->device, &uniform_buffer_desc);
+    if (renderer->uniform_buffer == NULL) {
+        log_error("Failed to create uniform buffer");
+        return RETURN_FAILURE;
+    }
 
     // Create meshes
     Renderer_register_builtin_meshes(renderer);
@@ -569,6 +657,10 @@ ReturnStatus Renderer_init_windowed(
     WGPUBindGroupLayout bind_group_layout = wgpuDeviceCreateBindGroupLayout(
         renderer->device, &bind_group_layout_desc
     );
+    if (bind_group_layout == NULL) {
+        log_error("Failed to create bind group layout");
+        return RETURN_FAILURE;
+    }
 
     // Create bind group
     WGPUBindGroupEntry bind_group_entries[] = {
@@ -587,38 +679,57 @@ ReturnStatus Renderer_init_windowed(
     };
     renderer->uniform_bind_group =
         wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
+    if (renderer->uniform_bind_group == NULL) {
+        log_error("Failed to create uniform bind group");
+        wgpuBindGroupLayoutRelease(bind_group_layout);
+        return RETURN_FAILURE;
+    }
 
     // Create solid render pipeline
+    RendererPipelineDesc solid_pipeline_desc = {
+        .label = "Solid Pipeline",
+        .shader_data = raijin_solid_shader_wgsl,
+        .shader_size = raijin_solid_shader_wgsl_size,
+        .texture_format = texture_format,
+        .depth_texture_format = depth_texture_format,
+        .bind_group_layout = bind_group_layout,
+        .topology = WGPUPrimitiveTopology_TriangleList,
+        .cull_mode = WGPUCullMode_None,
+        .depth_compare = WGPUCompareFunction_Less,
+        .depth_write_enabled = true,
+        .encode_output_srgb = output_requires_srgb_encoding
+    };
     ReturnStatus create_pipeline_status = Renderer_create_render_pipeline(
-        renderer,
-        &renderer->solid_pipeline,
-        "Solid Pipeline",
-        RAIJIN_ASSETS_DIR "/shaders/solid_shader.wgsl",
-        texture_format,
-        depth_texture_format,
-        bind_group_layout,
-        WGPUPrimitiveTopology_TriangleList,
-        WGPUCullMode_None
+        renderer, &renderer->solid_pipeline, &solid_pipeline_desc
     );
     if (create_pipeline_status != RETURN_SUCCESS) {
+        wgpuBindGroupLayoutRelease(bind_group_layout);
         return RETURN_FAILURE;
     }
 
     // Create edges render pipeline
+    RendererPipelineDesc edges_pipeline_desc = {
+        .label = "Edges Pipeline",
+        .shader_data = raijin_edges_shader_wgsl,
+        .shader_size = raijin_edges_shader_wgsl_size,
+        .texture_format = texture_format,
+        .depth_texture_format = depth_texture_format,
+        .bind_group_layout = bind_group_layout,
+        .topology = WGPUPrimitiveTopology_LineList,
+        .cull_mode = WGPUCullMode_None,
+        .depth_compare = WGPUCompareFunction_LessEqual,
+        .depth_write_enabled = false,
+        .encode_output_srgb = output_requires_srgb_encoding
+    };
     create_pipeline_status = Renderer_create_render_pipeline(
-        renderer,
-        &renderer->edges_pipeline,
-        "Edges Pipeline",
-        RAIJIN_ASSETS_DIR "/shaders/edges_shader.wgsl",
-        texture_format,
-        depth_texture_format,
-        bind_group_layout,
-        WGPUPrimitiveTopology_LineList,
-        WGPUCullMode_None
+        renderer, &renderer->edges_pipeline, &edges_pipeline_desc
     );
     if (create_pipeline_status != RETURN_SUCCESS) {
+        wgpuBindGroupLayoutRelease(bind_group_layout);
         return RETURN_FAILURE;
     }
+
+    wgpuBindGroupLayoutRelease(bind_group_layout);
     return RETURN_SUCCESS;
 }
 
@@ -628,6 +739,7 @@ ReturnStatus Renderer_init_headless(
     renderer->render_mode = RENDER_MODE_HEADLESS;
     WgpuCallbackContext cb_ctx = {
         .completed = false,
+        .success = false,
         .adapter = &renderer->adapter,
         .device = &renderer->device,
     };
@@ -635,9 +747,6 @@ ReturnStatus Renderer_init_headless(
     renderer->instance = instance;
 
     // Adapter request
-    if (renderer->adapter != NULL) {
-        wgpuAdapterRelease(renderer->adapter);
-    }
     WGPURequestAdapterOptions adapter_options = {
         // Don't need a surface
         .compatibleSurface = NULL,
@@ -647,7 +756,11 @@ ReturnStatus Renderer_init_headless(
     WGPURequestAdapterCallbackInfo adapter_cb_info = {
         .callback = adapter_request_callback,
         .userdata1 = &cb_ctx,
+        .mode = WGPUCallbackMode_AllowProcessEvents,
     };
+
+    cb_ctx.completed = false;
+    cb_ctx.success = false;
     wgpuInstanceRequestAdapter(
         renderer->instance, &adapter_options, adapter_cb_info
     );
@@ -661,15 +774,15 @@ ReturnStatus Renderer_init_headless(
     }
 
     // Device request
-    if (renderer->device != NULL) {
-        wgpuDeviceRelease(renderer->device);
-    }
     WGPUDeviceDescriptor device_desc = {.label = {"Device", WGPU_STRLEN}};
     WGPURequestDeviceCallbackInfo device_cb_info = {
         .callback = device_request_callback,
+        .mode = WGPUCallbackMode_AllowProcessEvents,
         .userdata1 = &cb_ctx,
     };
 
+    cb_ctx.completed = false;
+    cb_ctx.success = false;
     wgpuAdapterRequestDevice(renderer->adapter, &device_desc, device_cb_info);
 
     // TODO (mckenna) : Handle this async
@@ -677,12 +790,15 @@ ReturnStatus Renderer_init_headless(
         wgpuInstanceProcessEvents(renderer->instance);
     }
     if (!cb_ctx.success) {
-        wgpuAdapterRelease(renderer->adapter);
         return RETURN_FAILURE;
     }
 
     // Get device queue
     renderer->queue = wgpuDeviceGetQueue(renderer->device);
+    if (renderer->queue == NULL) {
+        log_error("Failed to get device queue");
+        return RETURN_FAILURE;
+    }
 
     // Create render target
     // TODO (mmckenna) : Look at different formats, including `Bgra8UnormSrgb`
@@ -707,12 +823,18 @@ ReturnStatus Renderer_init_headless(
     };
     renderer->render_target.headless.texture =
         wgpuDeviceCreateTexture(renderer->device, &texture_desc);
+    if (renderer->render_target.headless.texture == NULL) {
+        log_error("Failed to create headless render texture");
+        return RETURN_FAILURE;
+    }
 
     // Create depth texture
     WGPUTextureFormat depth_texture_format = WGPUTextureFormat_Depth24Plus;
-    Renderer_create_depth_texture(
-        renderer, width, height, "Depth Texture", depth_texture_format
-    );
+    if (Renderer_create_depth_texture(
+            renderer, width, height, "Depth Texture", depth_texture_format
+        ) != RETURN_SUCCESS) {
+        return RETURN_FAILURE;
+    }
 
     // Create uniform buffer
     mat4 proj_matrix = {0};
@@ -729,6 +851,10 @@ ReturnStatus Renderer_init_headless(
     };
     renderer->uniform_buffer =
         wgpuDeviceCreateBuffer(renderer->device, &uniform_buffer_desc);
+    if (renderer->uniform_buffer == NULL) {
+        log_error("Failed to create uniform buffer");
+        return RETURN_FAILURE;
+    }
 
     // Create meshes
     Renderer_register_builtin_meshes(renderer);
@@ -754,6 +880,10 @@ ReturnStatus Renderer_init_headless(
     WGPUBindGroupLayout bind_group_layout = wgpuDeviceCreateBindGroupLayout(
         renderer->device, &bind_group_layout_desc
     );
+    if (bind_group_layout == NULL) {
+        log_error("Failed to create bind group layout");
+        return RETURN_FAILURE;
+    }
 
     // Create bind group
     WGPUBindGroupEntry bind_group_entries[] = {
@@ -772,38 +902,58 @@ ReturnStatus Renderer_init_headless(
     };
     renderer->uniform_bind_group =
         wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
+    if (renderer->uniform_bind_group == NULL) {
+        log_error("Failed to create uniform bind group");
+        wgpuBindGroupLayoutRelease(bind_group_layout);
+        return RETURN_FAILURE;
+    }
 
     // Create solid render pipeline
+    RendererPipelineDesc solid_pipeline_desc = {
+        .label = "Solid Pipeline",
+        .shader_data = raijin_solid_shader_wgsl,
+        .shader_size = raijin_solid_shader_wgsl_size,
+        .texture_format = texture_format,
+        .depth_texture_format = depth_texture_format,
+        .bind_group_layout = bind_group_layout,
+        .topology = WGPUPrimitiveTopology_TriangleList,
+        .cull_mode = WGPUCullMode_None,
+        .depth_compare = WGPUCompareFunction_Less,
+        .depth_write_enabled = true,
+        .encode_output_srgb = false
+    };
     ReturnStatus create_pipeline_status = Renderer_create_render_pipeline(
-        renderer,
-        &renderer->solid_pipeline,
-        "Solid Pipeline",
-        RAIJIN_ASSETS_DIR "/shaders/solid_shader.wgsl",
-        texture_format,
-        depth_texture_format,
-        bind_group_layout,
-        WGPUPrimitiveTopology_TriangleList,
-        WGPUCullMode_None
+        renderer, &renderer->solid_pipeline, &solid_pipeline_desc
     );
     if (create_pipeline_status != RETURN_SUCCESS) {
+        wgpuBindGroupLayoutRelease(bind_group_layout);
         return RETURN_FAILURE;
     }
 
     // Create edges render pipeline
+
+    RendererPipelineDesc edges_pipeline_desc = {
+        .label = "Edges Pipeline",
+        .shader_data = raijin_edges_shader_wgsl,
+        .shader_size = raijin_edges_shader_wgsl_size,
+        .texture_format = texture_format,
+        .depth_texture_format = depth_texture_format,
+        .bind_group_layout = bind_group_layout,
+        .topology = WGPUPrimitiveTopology_LineList,
+        .cull_mode = WGPUCullMode_None,
+        .depth_compare = WGPUCompareFunction_LessEqual,
+        .depth_write_enabled = false,
+        .encode_output_srgb = false
+    };
     create_pipeline_status = Renderer_create_render_pipeline(
-        renderer,
-        &renderer->edges_pipeline,
-        "Edges Pipeline",
-        RAIJIN_ASSETS_DIR "/shaders/edges_shader.wgsl",
-        texture_format,
-        depth_texture_format,
-        bind_group_layout,
-        WGPUPrimitiveTopology_LineList,
-        WGPUCullMode_None
+        renderer, &renderer->edges_pipeline, &edges_pipeline_desc
     );
     if (create_pipeline_status != RETURN_SUCCESS) {
+        wgpuBindGroupLayoutRelease(bind_group_layout);
         return RETURN_FAILURE;
     }
+
+    wgpuBindGroupLayoutRelease(bind_group_layout);
     return RETURN_SUCCESS;
 }
 
@@ -918,7 +1068,7 @@ void Renderer_render_mesh_edges(
     wgpuRenderPassEncoderSetIndexBuffer(
         render_pass_encoder,
         mesh->edge_index_buffer,
-        WGPUIndexFormat_Uint16,
+        WGPUIndexFormat_Uint32,
         0,
         mesh->edge_indices.count * sizeof(u32)
     );
@@ -1133,7 +1283,13 @@ void Renderer_destroy(Renderer* renderer) {
 
     u32 builtin_count = sizeof(renderer->builtin) / sizeof(MeshHandle);
     log_debug("Builtin count: %d", builtin_count);
-    for (u32 i = 0; i < builtin_count; ++i) {
+    u32 mesh_count = renderer->meshes.count;
+
+    if (mesh_count > builtin_count) {
+        mesh_count = builtin_count;
+    }
+
+    for (u32 i = 0; i < mesh_count; ++i) {
         Mesh* mesh = &renderer->meshes.items[i];
         if (mesh->vertex_buffer != NULL) {
             wgpuBufferRelease(mesh->vertex_buffer);
@@ -1164,6 +1320,10 @@ void Renderer_destroy(Renderer* renderer) {
     MeshArray_free(&renderer->meshes);
     log_debug("Mesh array free.");
 
+    if (renderer->uniform_bind_group != NULL) {
+        wgpuBindGroupRelease(renderer->uniform_bind_group);
+        log_debug("Uniform bind group released.");
+    }
     if (renderer->uniform_buffer != NULL) {
         wgpuBufferRelease(renderer->uniform_buffer);
         log_debug("Uniform buffer released.");
@@ -1187,6 +1347,9 @@ void Renderer_destroy(Renderer* renderer) {
     switch (renderer->render_mode) {
         case RENDER_MODE_WINDOWED: {
             if (renderer->render_target.windowed.surface != NULL) {
+                wgpuSurfaceUnconfigure(
+                    renderer->render_target.windowed.surface
+                );
                 wgpuSurfaceRelease(renderer->render_target.windowed.surface);
                 log_debug("Window surface released.");
             }
@@ -1449,7 +1612,6 @@ void adapter_request_callback(
     void* userdata2
 ) {
     WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
-    ctx->completed = true;
     if (status == WGPURequestAdapterStatus_Success) {
         log_info("Adapter acquired successfully");
         ctx->success = true;
@@ -1460,6 +1622,7 @@ void adapter_request_callback(
         );
         ctx->success = false;
     }
+    ctx->completed = true;
 }
 
 void device_request_callback(
@@ -1470,7 +1633,6 @@ void device_request_callback(
     void* userdata2
 ) {
     WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
-    ctx->completed = true;
     if (status == WGPURequestDeviceStatus_Success) {
         log_info("Device acquired successfully");
         ctx->success = true;
@@ -1481,6 +1643,7 @@ void device_request_callback(
         );
         ctx->success = false;
     }
+    ctx->completed = true;
 }
 
 void buffer_map_callback(
@@ -1498,7 +1661,11 @@ void buffer_map_callback(
         }
         if (status != WGPUMapAsyncStatus_Success) {
             if (message.length > 0) {
-                log_error("Failed to map buffer: %s", message.data);
+                log_error(
+                    "Failed to map buffer: %.*s",
+                    (int)message.length,
+                    message.data
+                );
             } else {
                 log_error("Failed to map buffer: UNKNOWN ERROR");
             }

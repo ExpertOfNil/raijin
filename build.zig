@@ -1,5 +1,8 @@
 const std = @import("std");
 
+const SOLID_SHADER = @embedFile("assets/shaders/solid_shader.wgsl");
+const EDGES_SHADER = @embedFile("assets/shaders/edges_shader.wgsl");
+
 const C_FLAGS: []const []const u8 = &.{
     "-std=c11",
     "-Wall",
@@ -20,11 +23,12 @@ pub fn build(b: *std.Build) void {
     b.resolveInstallPrefix(b.pathFromRoot("."), .{});
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const embedded_shaders = generateEmbeddedShaders(b);
 
     generateCompileFlags(b);
 
-    addRaijinExe(b, target, optimize, "example-windowed", "examples/windowed.c");
-    addRaijinExe(b, target, optimize, "example-headless", "examples/headless.c");
+    addRaijinExe(b, target, optimize, "example-windowed", "examples/windowed.c", embedded_shaders);
+    addRaijinExe(b, target, optimize, "example-headless", "examples/headless.c", embedded_shaders);
 }
 
 fn addRaijinExe(
@@ -33,6 +37,7 @@ fn addRaijinExe(
     optimize: std.builtin.OptimizeMode,
     name: []const u8,
     src: []const u8,
+    embedded_shaders: std.Build.LazyPath
 ) void {
     const mod = b.createModule(.{
         .target = target,
@@ -42,6 +47,10 @@ fn addRaijinExe(
 
     mod.addCSourceFile(.{
         .file = b.path(src),
+        .flags = C_FLAGS,
+    });
+    mod.addCSourceFile(.{
+        .file = embedded_shaders,
         .flags = C_FLAGS,
     });
 
@@ -87,4 +96,54 @@ fn generateCompileFlags(b: *std.Build) void {
 
     const step = b.step("clangd", "Generate compile_flags.txt for clangd");
     step.dependOn(&update.step);
+}
+
+fn appendEmbeddedShader(
+    b: *std.Build,
+    buf: *std.ArrayList(u8),
+    name: []const u8,
+    bytes: []const u8,
+) void {
+    buf.appendSlice(b.allocator, "const unsigned char ") catch @panic("OOM");
+    buf.appendSlice(b.allocator, name) catch @panic("OOM");
+    buf.appendSlice(b.allocator, "[] = {") catch @panic("OOM");
+
+    for (bytes) |byte| {
+        buf.appendSlice(
+            b.allocator,
+            b.fmt("{d},", .{byte}),
+        ) catch @panic("OOM");
+    }
+
+    buf.appendSlice(b.allocator, "0};\nconst size_t ") catch @panic("OOM");
+    buf.appendSlice(b.allocator, name) catch @panic("OOM");
+    buf.appendSlice(b.allocator, "_size = sizeof(") catch @panic("OOM");
+    buf.appendSlice(b.allocator, name) catch @panic("OOM");
+    buf.appendSlice(b.allocator, ") - 1;\n\n") catch @panic("OOM");
+}
+
+fn generateEmbeddedShaders(b: *std.Build) std.Build.LazyPath {
+    var buf: std.ArrayList(u8) = .empty;
+
+    buf.appendSlice(b.allocator, "#include <stddef.h>\n\n") catch @panic("OOM");
+
+    appendEmbeddedShader(
+        b,
+        &buf,
+        "raijin_solid_shader_wgsl",
+        SOLID_SHADER,
+    );
+
+    appendEmbeddedShader(
+        b,
+        &buf,
+        "raijin_edges_shader_wgsl",
+        EDGES_SHADER,
+    );
+
+    const generated_files = b.addWriteFiles();
+    return generated_files.add(
+        "raijin_embedded_shaders.c",
+        buf.toOwnedSlice(b.allocator) catch @panic("OOM"),
+    );
 }

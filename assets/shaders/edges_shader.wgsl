@@ -24,6 +24,28 @@ struct VertexOutput {
 
 @group(0) @binding(0)
 var<uniform> uniforms: Uniforms;
+override encode_output_srgb: bool = false;
+
+fn linear_to_srgb_component(linear_value: f32) -> f32 {
+    let value = clamp(linear_value, 0.0, 1.0);
+    if (value <= 0.0031308) {
+        return 12.92 * value;
+    }
+
+    return 1.055 * pow(value, 1.0/2.4) - 0.055;
+}
+
+fn encode_output_rgb(linear_rgb: vec3<f32>) -> vec3<f32> {
+    if (!encode_output_srgb) {
+        return linear_rgb;
+    }
+
+    return vec3<f32>(
+        linear_to_srgb_component(linear_rgb.r),
+        linear_to_srgb_component(linear_rgb.g),
+        linear_to_srgb_component(linear_rgb.b),
+    );
+}
 
 @vertex
 fn vs_main(input: VertexInput, instance: Instance) -> VertexOutput {
@@ -44,5 +66,8 @@ fn vs_main(input: VertexInput, instance: Instance) -> VertexOutput {
 // Fragment shader for outline render pass
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
-    return input.color;
+    return vec4<f32>(
+        encode_output_rgb(input.color.rgb),
+        input.color.a,
+    );
 }
