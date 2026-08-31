@@ -1,10 +1,11 @@
+#include <inttypes.h>
 #include <raijin/raijin.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 static int write_pam_file(
     const uint8_t* pixel_buf,
-    uint64_t pixel_capacity,
+    size_t pixel_capacity,
     uint32_t width,
     uint32_t height,
     const char* filename
@@ -37,7 +38,7 @@ static int write_pam_file(
     }
 
     size_t written = fwrite(pixel_buf, 1, pixel_capacity, fp);
-    if ((uint64_t)written != pixel_capacity) {
+    if (written != pixel_capacity) {
         fprintf(stderr, "--> ERROR: Failed to write PAM body: %s\n", filename);
         fclose(fp);
         return -1;
@@ -110,6 +111,15 @@ int main(void) {
         goto cleanup;
     }
 
+    if (pixel_capacity > SIZE_MAX) {
+        fprintf(
+            stderr,
+            "--> ERROR: Invalid pixel capacity: %" PRIu64 "\n",
+            pixel_capacity
+        );
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
     pixel_buf = (uint8_t*)malloc((size_t)pixel_capacity);
     if (pixel_buf == NULL) {
         fprintf(stderr, "--> ERROR: Failed to create pixel buffer\n");
@@ -129,7 +139,9 @@ int main(void) {
     }
 
     const char* fname = "frame.pam";
-    if (write_pam_file(pixel_buf, pixel_capacity, desc.width, desc.height, fname) != 0) {
+    if (write_pam_file(
+            pixel_buf, (size_t)pixel_capacity, desc.width, desc.height, fname
+        ) != 0) {
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }

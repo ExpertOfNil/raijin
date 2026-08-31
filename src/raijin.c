@@ -1,8 +1,8 @@
-#define CIMPL_IMPLEMENTATION
+#include "../include/raijin.h"
+
 #include <stdlib.h>
 #include <string.h>
 
-#include "../include/raijin.h"
 #include "raijin/raijin.h"
 
 _Static_assert(
@@ -92,13 +92,16 @@ RaijinResult raijin_context_render(RaijinContext* ctx) {
 RaijinResult raijin_context_readback_size(
     const RaijinContext* ctx, uint64_t* out_size_bytes
 ) {
-    if (!ctx || !out_size_bytes) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    if (!out_size_bytes) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    *out_size_bytes = 0;
+    if (!ctx) return RAIJIN_ERROR_INVALID_ARGUMENT;
     if (ctx->render_mode != RAIJIN_RENDER_MODE_HEADLESS) {
         return RAIJIN_ERROR_INVALID_STATE;
     }
 
-    *out_size_bytes =
-        (uint64_t)ctx->width * (uint64_t)ctx->height * UINT64_C(4);
+    uint64_t pixels = (uint64_t)ctx->width * (uint64_t)ctx->height;
+    if (pixels > UINT64_MAX / UINT64_C(4)) return RAIJIN_ERROR_OUT_OF_MEMORY;
+    *out_size_bytes = pixels * UINT64_C(4);
 
     return RAIJIN_SUCCESS;
 }

@@ -1,4 +1,3 @@
-#define CIMPL_IMPLEMENTATION
 #include "cglm/cglm.h"
 #include "cglm/mat4.h"
 #include "raijin.h"
@@ -49,10 +48,13 @@ MeshHandle register_triangle(Raijin* engine) {
     IndexArray_push(&triangle.edge_indices, 0);
     // Register with engine
     MeshHandle handle = Raijin_register_mesh(engine, &triangle);
-    // Clean up temp data (since registration copies it)
-    VertexArray_free(&triangle.vertices);
-    IndexArray_free(&triangle.indices);
-    IndexArray_free(&triangle.edge_indices);
+    if (handle == INVALID_MESH_HANDLE) {
+        Mesh_release_cpu_arrays(&triangle);
+    } else {
+        triangle.vertices = (VertexArray){0};
+        triangle.indices = (IndexArray){0};
+        triangle.edge_indices = (IndexArray){0};
+    }
     return handle;
 }
 

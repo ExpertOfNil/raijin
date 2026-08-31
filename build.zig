@@ -53,6 +53,14 @@ fn addRaijinExe(
         .file = embedded_shaders,
         .flags = C_FLAGS,
     });
+    mod.addCSourceFile(.{
+        .file = b.path("src/core.c"),
+        .flags = C_FLAGS,
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("src/mesh.c"),
+        .flags = C_FLAGS,
+    });
 
     for (INCLUDE_DIRS) |dir| {
         mod.addIncludePath(b.path(dir));

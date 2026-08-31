@@ -87,10 +87,17 @@ void SdlWindow_handle_events(
                 window->should_close = true;
             } break;
             case SDL_EVENT_WINDOW_RESIZED: {
-                window->width = event.window.data1;
-                window->height = event.window.data2;
-                Renderer_handle_resize(renderer, window->width, window->height);
-                cam->aspect = (f32)window->width / (f32)window->height;
+                int width = event.window.data1;
+                int height = event.window.data2;
+                if (width <= 0 || height <= 0) break;
+                if (Renderer_handle_resize(renderer, (uint32_t)width, (uint32_t)height) !=
+                    RETURN_SUCCESS) {
+                    log_error("Failed to handle window resize");
+                    break;
+                }
+                window->width = width;
+                window->height = height;
+                cam->aspect = (f32)width / (f32)height;
                 glm_perspective_resize(cam->aspect, cam->proj_matrix);
             } break;
             case SDL_EVENT_KEY_DOWN: {

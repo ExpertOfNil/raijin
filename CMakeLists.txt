@@ -43,7 +43,9 @@ add_custom_command(
 )
 
 add_library(raijin STATIC
-    "src/raijin.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/core.c"
     "${RAIJIN_EMBEDDED_SHADERS_C}"
 )
 
@@ -105,5 +107,26 @@ if(BUILD_TESTING)
     add_test(
         NAME raijin-headless
         COMMAND raijin-test-headless
+    )
+
+    add_executable(raijin-test-mesh
+        tests/mesh.c
+    )
+    target_include_directories(raijin-test-mesh
+        PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cimpl/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cglm/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/wgpu/include"
+    )
+
+    target_link_libraries(raijin-test-mesh
+        PRIVATE
+        Raijin::Raijin
+    )
+
+    add_test(
+        NAME raijin-mesh
+        COMMAND raijin-test-mesh
     )
 endif()

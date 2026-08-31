@@ -28,6 +28,16 @@ int main(void) {
         goto cleanup;
     }
 
+    // Verify empty frame rendering and command clearing
+    result = raijin_context_render(ctx);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(
+            stderr, "--> ERROR: Failed to render empty frame: %u\n", (uint32_t)result
+        );
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
     // Create cube mesh
     RaijinMesh cube_mesh = RAIJIN_MESH_INVALID;
     result = raijin_context_get_builtin_mesh(
@@ -136,13 +146,32 @@ int main(void) {
     cubes[1].color[1] = 1.0f;
     cubes[1].color[2] = 0.0f;
 
-    result = raijin_context_submit_instances(
-        ctx, cube_mesh, cubes, 2
-    );
+    result = raijin_context_submit_instances(ctx, cube_mesh, cubes, 2);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
             "--> ERROR: Failed to submit multiple cube instances: %u\n",
+            (uint32_t)result
+        );
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    enum { GROWTH_INSTANCE_COUNT = 257 };
+    RaijinInstance growth_instances[GROWTH_INSTANCE_COUNT];
+
+    for (uint32_t i = 0; i < GROWTH_INSTANCE_COUNT; ++i) {
+        raijin_instance_init(&growth_instances[i]);
+    }
+
+    result = raijin_context_submit_instances(
+        ctx, cube_mesh, growth_instances, GROWTH_INSTANCE_COUNT
+    );
+
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(
+            stderr,
+            "--> ERROR: Failed instance buffer growth submission: %u",
             (uint32_t)result
         );
         exit_status = EXIT_FAILURE;
