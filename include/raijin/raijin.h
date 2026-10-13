@@ -18,6 +18,8 @@ typedef uint32_t RaijinResult;
 #define RAIJIN_ERROR_BUFFER_TOO_SMALL ((RaijinResult)6u)
 #define RAIJIN_ERROR_READBACK ((RaijinResult)7u)
 #define RAIJIN_ERROR_INVALID_HANDLE ((RaijinResult)8u)
+#define RAIJIN_ERROR_TIMEOUT ((RaijinResult)9u)
+#define RAIJIN_ERROR_DEVICE_LOST ((RaijinResult)10u)
 
 typedef struct RaijinContext RaijinContext;
 

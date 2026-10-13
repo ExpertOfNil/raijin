@@ -33,6 +33,22 @@ static int raijin_mesh_to_internal(
     return 0;
 }
 
+static RaijinResult raijin_result_from_status(
+    ReturnStatus status, RaijinResult fallback
+) {
+    switch (status) {
+        case RETURN_SUCCESS:
+            return RAIJIN_SUCCESS;
+        case RETURN_TIMEOUT:
+            return RAIJIN_ERROR_TIMEOUT;
+        case RETURN_DEVICE_LOST:
+            return RAIJIN_ERROR_DEVICE_LOST;
+        case RETURN_FAILURE:
+        default:
+            return fallback;
+    }
+}
+
 RaijinResult raijin_context_create(
     const RaijinContextDesc* desc, RaijinContext** out
 ) {
@@ -67,7 +83,7 @@ RaijinResult raijin_context_create(
     );
     if (result != RETURN_SUCCESS) {
         free(ctx);
-        return RAIJIN_ERROR_INITIALIZATION;
+        return raijin_result_from_status(result, RAIJIN_ERROR_INITIALIZATION);
     }
     ctx->height = desc->height;
     ctx->width = desc->width;
@@ -119,10 +135,13 @@ RaijinResult raijin_context_read_rgba8(
     if (pixel_capacity < required_capacity)
         return RAIJIN_ERROR_BUFFER_TOO_SMALL;
 
-    if (Raijin_copy_frame_to_buffer(
-            &ctx->engine, ctx->width, ctx->height, pixel_buf, pixel_capacity
-        ) != RETURN_SUCCESS) {
-        return RAIJIN_ERROR_READBACK;
+    ReturnStatus readback_status = Raijin_copy_frame_to_buffer(
+        &ctx->engine, ctx->width, ctx->height, pixel_buf, pixel_capacity
+    );
+    if (readback_status != RETURN_SUCCESS) {
+        return raijin_result_from_status(
+            readback_status, RAIJIN_ERROR_READBACK
+        );
     }
 
     return RAIJIN_SUCCESS;

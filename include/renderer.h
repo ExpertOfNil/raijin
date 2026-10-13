@@ -48,17 +48,29 @@ typedef enum {
     RENDER_MODE_WINDOWED,
 } RenderMode;
 
-typedef struct WgpuCallbackContext {
+typedef struct WgpuAdapterRequestContext {
     bool completed;
-    bool success;
-    WGPUAdapter* adapter;
-    WGPUDevice* device;
-} WgpuCallbackContext;
+    WGPURequestAdapterStatus status;
+    WGPUAdapter adapter;
+} WgpuAdapterRequestContext;
+
+typedef struct WgpuDeviceRequestContext {
+    bool completed;
+    WGPURequestDeviceStatus status;
+    WGPUDevice device;
+} WgpuDeviceRequestContext;
+
+typedef struct WgpuDeviceLostContext {
+    bool completed;
+    WGPUDeviceLostReason reason;
+} WgpuDeviceLostContext;
 
 typedef struct WgpuBufferMapContext {
-    WGPUMapAsyncStatus status;
+    bool active;
     bool completed;
-    WGPUStringView message;
+    bool unmap_requested;
+    WGPUMapAsyncStatus status;
+    WGPUBuffer staging_buffer;
 } WgpuBufferMapContext;
 
 typedef struct RendererPipelineDesc {
@@ -99,6 +111,13 @@ typedef struct Renderer {
     WGPUTextureView depth_texture_view;
     DrawCommandArray draw_commands;
     MeshArray meshes;
+    WgpuWaitConfig wait_config;
+    WgpuAdapterRequestContext adapter_request;
+    WgpuDeviceRequestContext device_request;
+    WgpuDeviceLostContext device_lost;
+    WGPUFuture device_lost_future;
+    bool device_lost_future_available;
+    WgpuBufferMapContext buffer_map;
     struct {
         // MeshHandle triangle;
         // MeshHandle tetrahedron;
@@ -181,6 +200,14 @@ void adapter_request_callback(
 void device_request_callback(
     WGPURequestDeviceStatus status,
     WGPUDevice device,
+    WGPUStringView message,
+    void* userdata1,
+    void* userdata2
+);
+
+void device_lost_callback(
+    const WGPUDevice* device,
+    WGPUDeviceLostReason reason,
     WGPUStringView message,
     void* userdata1,
     void* userdata2
@@ -627,6 +654,155 @@ ReturnStatus Renderer_create_render_pipeline(
     return RETURN_SUCCESS;
 }
 
+static ReturnStatus Renderer_request_adapter(
+    Renderer* renderer, const WGPURequestAdapterOptions* options
+) {
+    if (renderer == NULL || renderer->instance == NULL || options == NULL) {
+        return RETURN_FAILURE;
+    }
+
+    ReturnStatus status = RETURN_FAILURE;
+    WgpuAdapterRequestContext* context = &renderer->adapter_request;
+    *context = (WgpuAdapterRequestContext){
+        .completed = false,
+        .status = WGPURequestAdapterStatus_Unknown,
+        .adapter = NULL,
+    };
+
+    WGPURequestAdapterCallbackInfo callback_info = {
+        .mode = WGPUCallbackMode_AllowProcessEvents,
+        .callback = adapter_request_callback,
+        .userdata1 = context,
+    };
+    const bool* completion_flags[] = {&context->completed};
+
+    WGPUFuture future =
+        wgpuInstanceRequestAdapter(renderer->instance, options, callback_info);
+
+    WGPUFutureWaitInfo wait_info = {
+        .future = future,
+        .completed = false,
+    };
+
+    status = wait_for_gpu_futures(
+        renderer->instance,
+        &renderer->wait_config,
+        &wait_info,
+        1,
+        completion_flags,
+        1,
+        WGPU_INIT_TIMEOUT_NS
+    );
+
+    if (status != RETURN_SUCCESS) goto cleanup;
+    if (context->status != WGPURequestAdapterStatus_Success ||
+        context->adapter == NULL) {
+        status = RETURN_FAILURE;
+        goto cleanup;
+    }
+
+    renderer->adapter = context->adapter;
+    context->adapter = NULL;
+    status = RETURN_SUCCESS;
+
+cleanup:
+    if (context->adapter != NULL) {
+        wgpuAdapterRelease(context->adapter);
+        context->adapter = NULL;
+    }
+    return status;
+}
+
+static ReturnStatus Renderer_request_device(Renderer* renderer) {
+    if (renderer == NULL || renderer->instance == NULL ||
+        renderer->adapter == NULL) {
+        return RETURN_FAILURE;
+    }
+
+    ReturnStatus status = RETURN_FAILURE;
+    WgpuDeviceRequestContext* context = &renderer->device_request;
+
+    *context = (WgpuDeviceRequestContext){
+        .completed = false,
+        .status = WGPURequestDeviceStatus_Unknown,
+        .device = NULL,
+    };
+
+    renderer->device_lost = (WgpuDeviceLostContext){
+        .completed = false,
+        .reason = WGPUDeviceLostReason_Unknown,
+    };
+    renderer->device_lost_future = (WGPUFuture){0};
+    renderer->device_lost_future_available = false;
+
+    WGPUDeviceDescriptor device_desc = {
+        .label = {"Device", WGPU_STRLEN},
+        .deviceLostCallbackInfo = {
+            .mode = WGPUCallbackMode_AllowProcessEvents,
+            .callback = device_lost_callback,
+            .userdata1 = &renderer->device_lost,
+        },
+    };
+
+    WGPURequestDeviceCallbackInfo callback_info = {
+        .mode = WGPUCallbackMode_AllowProcessEvents,
+        .callback = device_request_callback,
+        .userdata1 = context,
+    };
+
+    const bool* completion_flags[] = {&context->completed};
+
+    WGPUFuture future = wgpuAdapterRequestDevice(
+        renderer->adapter, &device_desc, callback_info
+    );
+
+    WGPUFutureWaitInfo wait_info = {
+        .future = future,
+        .completed = false,
+    };
+
+    status = wait_for_gpu_futures(
+        renderer->instance,
+        &renderer->wait_config,
+        &wait_info,
+        1,
+        completion_flags,
+        1,
+        WGPU_INIT_TIMEOUT_NS
+    );
+
+    if (status != RETURN_SUCCESS) goto cleanup;
+
+    if (context->status != WGPURequestDeviceStatus_Success ||
+        context->device == NULL) {
+        status = RETURN_FAILURE;
+        goto cleanup;
+    }
+
+    renderer->device = context->device;
+    context->device = NULL;
+
+    if (renderer->wait_config.timed_wait_enabled &&
+        renderer->wait_config.timed_wait_max_count >= 2) {
+        renderer->device_lost_future =
+            wgpuDeviceGetLostFuture(renderer->device);
+        if (renderer->device_lost_future.id != 0) {
+            renderer->device_lost_future_available = true;
+        } else {
+            log_warn("Device-lost future unavailable. Using bounded polling");
+        }
+    }
+    status = RETURN_SUCCESS;
+
+cleanup:
+    if (context->device != NULL) {
+        wgpuDeviceRelease(context->device);
+        context->device = NULL;
+    }
+
+    return status;
+}
+
 ReturnStatus Renderer_init_windowed(
     Renderer* renderer,
     const WGPUInstance instance,
@@ -635,13 +811,6 @@ ReturnStatus Renderer_init_windowed(
     const u32 height
 ) {
     renderer->render_mode = RENDER_MODE_WINDOWED;
-    WgpuCallbackContext cb_ctx = {
-        .completed = false,
-        .success = false,
-        .adapter = &renderer->adapter,
-        .device = &renderer->device,
-    };
-
     renderer->instance = instance;
     renderer->render_target.windowed.surface = surface;
 
@@ -652,43 +821,15 @@ ReturnStatus Renderer_init_windowed(
         .powerPreference = WGPUPowerPreference_HighPerformance,
         .forceFallbackAdapter = false,
     };
-    WGPURequestAdapterCallbackInfo adapter_cb_info = {
-        .callback = adapter_request_callback,
-        .userdata1 = &cb_ctx,
-        .mode = WGPUCallbackMode_AllowProcessEvents,
-    };
 
-    cb_ctx.completed = false;
-    cb_ctx.success = false;
-    wgpuInstanceRequestAdapter(instance, &adapter_options, adapter_cb_info);
-
-    while (!cb_ctx.completed) {
-        wgpuInstanceProcessEvents(instance);
-    }
-    if (!cb_ctx.success) {
-        return RETURN_FAILURE;
-    }
+    ReturnStatus adapter_status =
+        Renderer_request_adapter(renderer, &adapter_options);
+    if (adapter_status != RETURN_SUCCESS) return adapter_status;
     log_debug("Adapter request successful");
 
     // Device request
-    WGPUDeviceDescriptor device_desc = {.label = {"Device", WGPU_STRLEN}};
-    WGPURequestDeviceCallbackInfo device_cb_info = {
-        .callback = device_request_callback,
-        .userdata1 = &cb_ctx,
-        .mode = WGPUCallbackMode_AllowProcessEvents,
-    };
-
-    cb_ctx.completed = false;
-    cb_ctx.success = false;
-    wgpuAdapterRequestDevice(renderer->adapter, &device_desc, device_cb_info);
-
-    while (!cb_ctx.completed) {
-        wgpuInstanceProcessEvents(instance);
-    }
-    if (!cb_ctx.success) {
-        log_error("Device request error");
-        return RETURN_FAILURE;
-    }
+    ReturnStatus device_status = Renderer_request_device(renderer);
+    if (device_status != RETURN_SUCCESS) return device_status;
     log_debug("Device request successful");
 
     // Get device queue
@@ -893,13 +1034,6 @@ ReturnStatus Renderer_init_headless(
     Renderer* renderer, const WGPUInstance instance, u32 width, u32 height
 ) {
     renderer->render_mode = RENDER_MODE_HEADLESS;
-    WgpuCallbackContext cb_ctx = {
-        .completed = false,
-        .success = false,
-        .adapter = &renderer->adapter,
-        .device = &renderer->device,
-    };
-
     renderer->instance = instance;
 
     // Adapter request
@@ -909,45 +1043,15 @@ ReturnStatus Renderer_init_headless(
         .powerPreference = WGPUPowerPreference_HighPerformance,
         .forceFallbackAdapter = false,
     };
-    WGPURequestAdapterCallbackInfo adapter_cb_info = {
-        .callback = adapter_request_callback,
-        .userdata1 = &cb_ctx,
-        .mode = WGPUCallbackMode_AllowProcessEvents,
-    };
-
-    cb_ctx.completed = false;
-    cb_ctx.success = false;
-    wgpuInstanceRequestAdapter(
-        renderer->instance, &adapter_options, adapter_cb_info
-    );
-
-    // TODO (mmckenna) : Handle this async
-    while (!cb_ctx.completed) {
-        wgpuInstanceProcessEvents(renderer->instance);
-    }
-    if (!cb_ctx.success) {
-        return RETURN_FAILURE;
-    }
+    ReturnStatus adapter_status =
+        Renderer_request_adapter(renderer, &adapter_options);
+    if (adapter_status != RETURN_SUCCESS) return adapter_status;
+    log_debug("Adapter request successful");
 
     // Device request
-    WGPUDeviceDescriptor device_desc = {.label = {"Device", WGPU_STRLEN}};
-    WGPURequestDeviceCallbackInfo device_cb_info = {
-        .callback = device_request_callback,
-        .mode = WGPUCallbackMode_AllowProcessEvents,
-        .userdata1 = &cb_ctx,
-    };
-
-    cb_ctx.completed = false;
-    cb_ctx.success = false;
-    wgpuAdapterRequestDevice(renderer->adapter, &device_desc, device_cb_info);
-
-    // TODO (mckenna) : Handle this async
-    while (!cb_ctx.completed) {
-        wgpuInstanceProcessEvents(renderer->instance);
-    }
-    if (!cb_ctx.success) {
-        return RETURN_FAILURE;
-    }
+    ReturnStatus device_status = Renderer_request_device(renderer);
+    if (device_status != RETURN_SUCCESS) return device_status;
+    log_debug("Device request successful");
 
     // Get device queue
     renderer->queue = wgpuDeviceGetQueue(renderer->device);
@@ -1537,7 +1641,42 @@ ReturnStatus Renderer_render(Renderer* renderer) {
     return status;
 }
 
+static void Renderer_cancel_buffer_map(Renderer* renderer) {
+    if (renderer == NULL) return;
+
+    WgpuBufferMapContext* ctx = &renderer->buffer_map;
+    if (!ctx->active || ctx->staging_buffer == NULL || ctx->unmap_requested) {
+        return;
+    }
+
+    if (ctx->completed && ctx->status != WGPUMapAsyncStatus_Success) return;
+
+    ctx->unmap_requested = true;
+    wgpuBufferUnmap(ctx->staging_buffer);
+}
+
+static void Renderer_retire_buffer_map(Renderer* renderer) {
+    if (renderer == NULL) return;
+
+    WgpuBufferMapContext* ctx = &renderer->buffer_map;
+    if (!ctx->active || !ctx->completed) return;
+    if (ctx->status == WGPUMapAsyncStatus_Success && !ctx->unmap_requested &&
+        ctx->staging_buffer != NULL) {
+        ctx->unmap_requested = true;
+        wgpuBufferUnmap(ctx->staging_buffer);
+    }
+    if (ctx->staging_buffer != NULL) wgpuBufferRelease(ctx->staging_buffer);
+
+    *ctx = (WgpuBufferMapContext){.status = WGPUMapAsyncStatus_Unknown};
+}
+
 void Renderer_destroy(Renderer* renderer) {
+    Renderer_cancel_buffer_map(renderer);
+    if (renderer->instance != NULL) {
+        wgpuInstanceProcessEvents(renderer->instance);
+    }
+    Renderer_retire_buffer_map(renderer);
+
     DrawCommandArray_free(&renderer->draw_commands);
 
     for (u32 i = 0; i < renderer->meshes.count; ++i) {
@@ -1590,22 +1729,44 @@ void Renderer_destroy(Renderer* renderer) {
             }
         } break;
     }
+
+    if (renderer->buffer_map.active &&
+        renderer->buffer_map.staging_buffer != NULL) {
+        wgpuBufferRelease(renderer->buffer_map.staging_buffer);
+        renderer->buffer_map.staging_buffer = NULL;
+    }
+
     if (renderer->queue != NULL) {
         wgpuQueueRelease(renderer->queue);
         log_debug("Queue released.");
+    }
+
+    if (renderer->device_request.device != NULL) {
+        wgpuDeviceRelease(renderer->device_request.device);
+        renderer->device_request.device = NULL;
     }
     if (renderer->device != NULL) {
         wgpuDeviceRelease(renderer->device);
         log_debug("Device released.");
     }
+
+    if (renderer->adapter_request.adapter != NULL) {
+        wgpuAdapterRelease(renderer->adapter_request.adapter);
+        renderer->adapter_request.adapter = NULL;
+    }
     if (renderer->adapter != NULL) {
         wgpuAdapterRelease(renderer->adapter);
         log_debug("Adapter released.");
     }
+
     if (renderer->instance != NULL) {
         wgpuInstanceRelease(renderer->instance);
         log_debug("Instance released.");
     }
+
+    renderer->buffer_map = (WgpuBufferMapContext){
+        .status = WGPUMapAsyncStatus_Unknown,
+    };
 }
 
 ReturnStatus Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
@@ -1659,7 +1820,6 @@ ReturnStatus Renderer_copy_frame_to_buffer(
     WGPUBuffer staging_buffer = NULL;
     WGPUCommandEncoder encoder = NULL;
     WGPUCommandBuffer command_buffer = NULL;
-    bool mapped = false;
 
     if (buffer == NULL) {
         log_error("Copy frame destination buffer was NULL.");
@@ -1671,6 +1831,24 @@ ReturnStatus Renderer_copy_frame_to_buffer(
             "You must be using headless render mode to copy frame to buffer."
         );
         goto cleanup;
+    }
+
+    wgpuInstanceProcessEvents(renderer->instance);
+    if (renderer->device_lost.completed) {
+        Renderer_cancel_buffer_map(renderer);
+        wgpuInstanceProcessEvents(renderer->instance);
+        Renderer_retire_buffer_map(renderer);
+        return RETURN_DEVICE_LOST;
+    }
+    if (renderer->buffer_map.active) {
+        if (!renderer->buffer_map.completed) return RETURN_TIMEOUT;
+
+        WGPUMapAsyncStatus previous_status = renderer->buffer_map.status;
+        Renderer_retire_buffer_map(renderer);
+
+        if (previous_status == WGPUMapAsyncStatus_InstanceDropped) {
+            return RETURN_DEVICE_LOST;
+        }
     }
 
     // RGBA8 assumed
@@ -1764,56 +1942,113 @@ ReturnStatus Renderer_copy_frame_to_buffer(
     }
     wgpuQueueSubmit(renderer->queue, 1, &command_buffer);
 
-    WgpuBufferMapContext buffer_map_ctx = {
+    WgpuBufferMapContext* map_ctx = &renderer->buffer_map;
+    *map_ctx = (WgpuBufferMapContext){
+        .active = true,
         .completed = false,
+        .unmap_requested = false,
         .status = WGPUMapAsyncStatus_Unknown,
+        .staging_buffer = staging_buffer,
     };
+    staging_buffer = NULL;
     WGPUBufferMapCallbackInfo map_callback_info = {
         .mode = WGPUCallbackMode_AllowProcessEvents,
         .callback = buffer_map_callback,
-        .userdata1 = &buffer_map_ctx,
+        .userdata1 = map_ctx,
     };
-    WGPUFuture future = wgpuBufferMapAsync(
-        staging_buffer, WGPUMapMode_Read, 0, staging_size, map_callback_info
+
+    WGPUFuture map_future = wgpuBufferMapAsync(
+        map_ctx->staging_buffer,
+        WGPUMapMode_Read,
+        0,
+        staging_size,
+        map_callback_info
     );
-    (void)future;
 
-    // WGPUFutureWaitInfo wait_info = {
-    //     .future = future,
-    // };
-    // wgpuInstanceWaitAny(renderer->instance, 1, &wait_info, UINT64_MAX);
-    // while (wgpuBufferGetMapState(staging_buffer) ==
-    // WGPUBufferMapState_Unmapped) {
-    while (!buffer_map_ctx.completed) {
-        // wgpuDevicePoll(renderer->device, false, NULL);
+    WGPUFutureWaitInfo wait_infos[2] = {
+        {
+            .future = map_future,
+            .completed = false,
+        },
+    };
+    size_t wait_info_count = 1;
+
+    if (renderer->device_lost_future_available) {
+        wait_infos[wait_info_count++] = (WGPUFutureWaitInfo){
+            .future = renderer->device_lost_future,
+            .completed = false,
+        };
+    }
+
+    const bool* completion_flags[] = {
+        &map_ctx->completed,
+        &renderer->device_lost.completed,
+    };
+
+    ReturnStatus wait_status = wait_for_gpu_futures(
+        renderer->instance,
+        &renderer->wait_config,
+        wait_infos,
+        wait_info_count,
+        completion_flags,
+        2,
+        WGPU_READBACK_TIMEOUT_NS
+    );
+
+    wgpuInstanceProcessEvents(renderer->instance);
+
+    if (renderer->device_lost.completed) {
+        status = RETURN_DEVICE_LOST;
+        Renderer_cancel_buffer_map(renderer);
         wgpuInstanceProcessEvents(renderer->instance);
-    }
-
-    if (buffer_map_ctx.status != WGPUMapAsyncStatus_Success) {
-        goto cleanup;
-    }
-    mapped = true;
-
-    const void* mapped_data =
-        wgpuBufferGetConstMappedRange(staging_buffer, 0, staging_size);
-    if (mapped_data == NULL) {
-        log_error("Failed to get mapped readback range");
+        Renderer_retire_buffer_map(renderer);
         goto cleanup;
     }
 
-    const u8* source = mapped_data;
-    for (u32 row = 0; row < height; ++row) {
-        size_t output_offset = (size_t)row * output_row_size;
-        size_t staging_offset = (size_t)row * staging_row_size;
-        memcpy(
-            buffer + output_offset, source + staging_offset, output_row_size
+    if (map_ctx->completed) {
+        if (map_ctx->status == WGPUMapAsyncStatus_InstanceDropped) {
+            status = RETURN_DEVICE_LOST;
+            Renderer_retire_buffer_map(renderer);
+            goto cleanup;
+        }
+
+        if (map_ctx->status != WGPUMapAsyncStatus_Success) {
+            Renderer_retire_buffer_map(renderer);
+            goto cleanup;
+        }
+
+        const void* mapped_data = wgpuBufferGetConstMappedRange(
+            map_ctx->staging_buffer, 0, staging_size
         );
+        if (mapped_data == NULL) {
+            log_error("Failed to get mapped readback range");
+            Renderer_retire_buffer_map(renderer);
+            goto cleanup;
+        }
+
+        const u8* source = mapped_data;
+        for (u32 row = 0; row < height; ++row) {
+            size_t output_offset = (size_t)row * output_row_size;
+            size_t staging_offset = (size_t)row * staging_row_size;
+            memcpy(
+                buffer + output_offset, source + staging_offset, output_row_size
+            );
+        }
+
+        status = RETURN_SUCCESS;
+        Renderer_retire_buffer_map(renderer);
+        goto cleanup;
     }
 
-    status = RETURN_SUCCESS;
+    status = wait_status == RETURN_TIMEOUT ? RETURN_TIMEOUT : RETURN_FAILURE;
+
+    Renderer_cancel_buffer_map(renderer);
+    wgpuInstanceProcessEvents(renderer->instance);
+
+    if (renderer->device_lost.completed) status = RETURN_DEVICE_LOST;
+    Renderer_retire_buffer_map(renderer);
 
 cleanup:
-    if (mapped) wgpuBufferUnmap(staging_buffer);
     if (command_buffer != NULL) wgpuCommandBufferRelease(command_buffer);
     if (encoder != NULL) wgpuCommandEncoderRelease(encoder);
     if (staging_buffer != NULL) wgpuBufferRelease(staging_buffer);
@@ -1829,17 +2064,27 @@ void adapter_request_callback(
     void* userdata1,
     void* userdata2
 ) {
-    WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
+    (void)userdata2;
+
+    WgpuAdapterRequestContext* ctx = (WgpuAdapterRequestContext*)userdata1;
+    if (ctx == NULL) {
+        if (adapter != NULL) wgpuAdapterRelease(adapter);
+        return;
+    }
+
+    ctx->status = status;
+    ctx->adapter = adapter;
+
     if (status == WGPURequestAdapterStatus_Success) {
         log_info("Adapter acquired successfully");
-        ctx->success = true;
-        *ctx->adapter = adapter;
-    } else {
+    } else if (message.length > 0) {
         log_error(
             "Failed to acquire adapter: %.*s", (int)message.length, message.data
         );
-        ctx->success = false;
+    } else {
+        log_error("Failed to acquire adapter");
     }
+
     ctx->completed = true;
 }
 
@@ -1850,17 +2095,59 @@ void device_request_callback(
     void* userdata1,
     void* userdata2
 ) {
-    WgpuCallbackContext* ctx = (WgpuCallbackContext*)userdata1;
+    (void)userdata2;
+
+    WgpuDeviceRequestContext* ctx = (WgpuDeviceRequestContext*)userdata1;
+    if (ctx == NULL) {
+        if (device != NULL) wgpuDeviceRelease(device);
+        return;
+    }
+
+    ctx->status = status;
+    ctx->device = device;
+
     if (status == WGPURequestDeviceStatus_Success) {
         log_info("Device acquired successfully");
-        ctx->success = true;
-        *ctx->device = device;
-    } else {
+    } else if (message.length > 0) {
         log_error(
             "Failed to acquire device: %.*s", (int)message.length, message.data
         );
-        ctx->success = false;
+    } else {
+        log_error("Failed to acquire device");
     }
+
+    ctx->completed = true;
+}
+
+void device_lost_callback(
+    const WGPUDevice* device,
+    WGPUDeviceLostReason reason,
+    WGPUStringView message,
+    void* userdata1,
+    void* userdata2
+) {
+    (void)device;
+    (void)userdata2;
+
+    WgpuDeviceLostContext* ctx = (WgpuDeviceLostContext*)userdata1;
+
+    if (ctx == NULL) return;
+
+    ctx->reason = reason;
+
+    if (reason == WGPUDeviceLostReason_Destroyed) {
+        log_debug("Device destroyed");
+    } else if (message.length > 0) {
+        log_error(
+            "Device lost: reason=%u, message=%.*s",
+            (uint32_t)reason,
+            (int)message.length,
+            message.data
+        );
+    } else {
+        log_error("Device lost: reason=%u", (uint32_t)reason);
+    }
+
     ctx->completed = true;
 }
 
@@ -1870,25 +2157,27 @@ void buffer_map_callback(
     void* userdata1,
     void* userdata2
 ) {
-    if (userdata1 != NULL) {
-        WgpuBufferMapContext* ctx = (WgpuBufferMapContext*)userdata1;
-        ctx->status = status;
-        if (message.length != 0) {
-            ctx->message = message;
+    (void)userdata2;
+
+    WgpuBufferMapContext* ctx = (WgpuBufferMapContext*)userdata1;
+
+    if (ctx == NULL) return;
+
+    ctx->status = status;
+
+    bool expected_abort =
+        ctx->unmap_requested && status == WGPUMapAsyncStatus_Aborted;
+    if (status != WGPUMapAsyncStatus_Success && !expected_abort) {
+        if (message.length > 0) {
+            log_error(
+                "Failed to map buffer: %.*s", (int)message.length, message.data
+            );
+        } else {
+            log_error("Failed to map buffer");
         }
-        if (status != WGPUMapAsyncStatus_Success) {
-            if (message.length > 0) {
-                log_error(
-                    "Failed to map buffer: %.*s",
-                    (int)message.length,
-                    message.data
-                );
-            } else {
-                log_error("Failed to map buffer: UNKNOWN ERROR");
-            }
-        }
-        ctx->completed = true;
     }
+
+    ctx->completed = true;
 }
 
 #endif /* RENDERER_H */

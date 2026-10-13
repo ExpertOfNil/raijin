@@ -102,12 +102,35 @@ void Raijin_destroy(Raijin* engine);
 ReturnStatus Raijin_init(
     Raijin* engine, const char* title, u32 width, u32 height, RenderMode mode
 ) {
+    WGPUInstanceCapabilities supported_capabilities = {0};
+    WgpuWaitConfig wait_config = {0};
     WGPUInstanceDescriptor instance_desc = {0};
+
+    WGPUStatus capability_status =
+        wgpuGetInstanceCapabilities(&supported_capabilities);
+    if (capability_status == WGPUStatus_Success &&
+        supported_capabilities.timedWaitAnyEnable &&
+        supported_capabilities.timedWaitAnyMaxCount > 0) {
+        size_t requested_count =
+            supported_capabilities.timedWaitAnyMaxCount < 2
+                ? supported_capabilities.timedWaitAnyMaxCount
+                : 2;
+
+        instance_desc.features.timedWaitAnyEnable = true;
+        instance_desc.features.timedWaitAnyMaxCount = requested_count;
+
+        wait_config.timed_wait_enabled = true;
+        wait_config.timed_wait_max_count = requested_count;
+    } else {
+        log_warn("Timed WaitAny unavailable. Using bounded polling");
+    }
     WGPUInstance instance = wgpuCreateInstance(&instance_desc);
     if (instance == NULL) {
         log_error("Failed to create WGPU instance");
         return RETURN_FAILURE;
     }
+
+    engine->renderer.wait_config = wait_config;
 
     if (mode == RENDER_MODE_WINDOWED) {
         engine->mouse = (MouseState){
@@ -136,14 +159,14 @@ ReturnStatus Raijin_init(
         );
         if (status != RETURN_SUCCESS) {
             Raijin_destroy(engine);
-            return RETURN_FAILURE;
+            return status;
         }
     } else {
         ReturnStatus status =
             Renderer_init_headless(&engine->renderer, instance, width, height);
         if (status != RETURN_SUCCESS) {
             Raijin_destroy(engine);
-            return RETURN_FAILURE;
+            return status;
         }
     }
 
