@@ -3,16 +3,10 @@
 
 #include <memory.h>
 #include <stdalign.h>
-#include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-
-#ifndef LOG_LEVEL
-#define LOG_LEVEL 1
-#endif
 
 #ifndef CIMPL_ALLOC
 #include <stdlib.h>
@@ -190,13 +184,6 @@ static inline void* cimpl_aligned_realloc(
 /*** FUNCTION DECLARATIONS ***/
 
 inline static u32 randi(u32 index);
-const char* get_timestamp(void);
-void log_message(const char* level_str, const char* format, va_list args);
-void log_trace(const char* format, ...);
-void log_debug(const char* format, ...);
-void log_info(const char* format, ...);
-void log_warn(const char* format, ...);
-void log_error(const char* format, ...);
 
 /*** FUNCTION DEFINITIONS ***/
 
@@ -204,69 +191,6 @@ void log_error(const char* format, ...);
 inline static u32 randi(u32 index) {
     index = (index << 13) ^ index;
     return (index * (index * index * 15731 + 789221) + 1276312589) & 0x7fffffff;
-}
-
-const char* get_timestamp(void) {
-    static char timestamp[20];
-    static time_t last_time = 0;
-
-    time_t now = time(NULL);
-    if (now != last_time) {
-        last_time = now;
-        struct tm* timeinfo = localtime(&now);
-        strftime(timestamp, sizeof(timestamp), "%H:%M:%S", timeinfo);
-    }
-    return timestamp;
-}
-
-void log_message(const char* level_str, const char* format, va_list args) {
-    printf("[%s] %s: ", get_timestamp(), level_str);
-    vprintf(format, args);
-    printf("\n");
-    fflush(stdout);
-
-    va_end(args);
-}
-void log_trace(const char* format, ...) {
-    const u8 level = 0;
-    if (LOG_LEVEL > level) return;
-    va_list args;
-    va_start(args, format);
-    log_message("TRACE", format, args);
-}
-void log_debug(const char* format, ...) {
-    const u8 level = 1;
-    if (LOG_LEVEL > level) return;
-    va_list args;
-    va_start(args, format);
-    log_message("DEBUG", format, args);
-}
-void log_info(const char* format, ...) {
-    const u8 level = 2;
-    if (LOG_LEVEL > level) return;
-    va_list args;
-    va_start(args, format);
-    log_message("INFO", format, args);
-}
-void log_warn(const char* format, ...) {
-    const u8 level = 3;
-    if (LOG_LEVEL > level) return;
-    va_list args;
-    va_start(args, format);
-    log_message("WARN", format, args);
-}
-void log_error(const char* format, ...) {
-    const u8 level = 4;
-    if (LOG_LEVEL > level) return;
-    va_list args;
-    va_start(args, format);
-
-    fprintf(stderr, "[%s] %s: ", get_timestamp(), "ERROR");
-    vfprintf(stderr, format, args);
-    fprintf(stderr, "\n");
-
-    fflush(stderr);
-    va_end(args);
 }
 #endif /* CIMPL_IMPLEMENTATION */
 

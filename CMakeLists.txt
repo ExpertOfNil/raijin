@@ -11,6 +11,7 @@ set(
 
 include(CTest)
 find_package(SDL3 REQUIRED CONFIG)
+find_package(Threads REQUIRED)
 
 # Shader compile
 set(
@@ -42,13 +43,26 @@ add_custom_command(
     VERBATIM
 )
 
+add_library(logging STATIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/lib/logging/logging.c"
+)
+add_library(Logging::Logging ALIAS logging)
+target_include_directories(logging
+    PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/logging/include"
+)
+target_link_libraries(logging
+    PUBLIC
+    Threads::Threads
+)
+
 add_library(raijin STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin_sdl3.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core.c"
     "${RAIJIN_EMBEDDED_SHADERS_C}"
 )
-
 add_library(Raijin::Raijin ALIAS raijin)
 
 target_compile_features(raijin PUBLIC c_std_11)
@@ -60,6 +74,7 @@ target_include_directories(raijin
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/cimpl/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/cglm/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/wgpu/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/logging/include"
 )
 
 target_link_libraries(raijin
@@ -67,6 +82,7 @@ target_link_libraries(raijin
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/wgpu/libwgpu_native.a"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/cglm/libcglm.a"
         SDL3::SDL3
+        Logging::Logging
         m
         dl
 )

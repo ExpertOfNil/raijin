@@ -221,6 +221,8 @@ int main(void) {
         &engine.renderer, engine.camera.proj_matrix, engine.camera.view_matrix
     );
 
+    (void) tri;
+    (void) frustum;
     while (!engine.window.should_close) {
         Raijin_handle_events(&engine);
         // Raijin_draw_mesh_instance(&engine, tri, tri_instance);

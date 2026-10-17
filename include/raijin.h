@@ -14,16 +14,13 @@
 #include "mesh.h"
 #include "renderer.h"
 #include "webgpu.h"
-
-#define CGLM_FORCE_DEPTH_ZERO_TO_ONE
-
-// #ifdef RAIJIN_SDL3_IMPL
-#include "raijin_sdl3.h"
+#include "window_backend.h"
+#include "logging.h"
 
 /* Types */
 
 typedef struct Raijin {
-    SdlWindow window;
+    RaijinWindow window;
     Renderer renderer;
     PanOrbitCamera camera;
     MouseState mouse;
@@ -122,11 +119,11 @@ ReturnStatus Raijin_init(
         wait_config.timed_wait_enabled = true;
         wait_config.timed_wait_max_count = requested_count;
     } else {
-        log_warn("Timed WaitAny unavailable. Using bounded polling");
+        log_warn("Timed WaitAny unavailable. Using bounded polling\n");
     }
     WGPUInstance instance = wgpuCreateInstance(&instance_desc);
     if (instance == NULL) {
-        log_error("Failed to create WGPU instance");
+        log_error("Failed to create WGPU instance\n");
         return RETURN_FAILURE;
     }
 
@@ -139,17 +136,17 @@ ReturnStatus Raijin_init(
             .button_right = false,
             .position = {0.0f, 0.0f},
         };
-        if (!SdlWindow_init(&engine->window, title, width, height)) {
+        if (!RaijinWindow_init(&engine->window, title, width, height)) {
             wgpuInstanceRelease(instance);
             return RETURN_FAILURE;
         }
 
         // Create platform-specific surface
         WGPUSurface surface =
-            create_surface_sdl3(instance, engine->window.handle);
+            RaijinWindow_create_surface(&engine->window, instance);
         if (surface == NULL) {
-            log_error("Failed to create surface");
-            SdlWindow_destroy(&engine->window);
+            log_error("Failed to create surface\n");
+            RaijinWindow_destroy(&engine->window);
             wgpuInstanceRelease(instance);
             return RETURN_FAILURE;
         }
@@ -188,25 +185,108 @@ ReturnStatus Raijin_init(
 }
 
 void Raijin_handle_events(Raijin* engine) {
-    SdlWindow_handle_events(
-        &engine->window, &engine->renderer, &engine->mouse, &engine->camera
-    );
+    RaijinWindowEvent event;
+
+    while (RaijinWindow_poll_event(&engine->window, &event)) {
+        bool camera_changed = false;
+        switch (event.type) {
+            case RAIJIN_WINDOW_EVENT_QUIT: {
+                engine->window.should_close = true;
+            } break;
+            case RAIJIN_WINDOW_EVENT_RESIZED: {
+                int32_t width = event.data.resized.width;
+                int32_t height = event.data.resized.height;
+                if (width <= 0 || height <= 0) break;
+                if (Renderer_handle_resize(
+                        &engine->renderer, (uint32_t)width, (uint32_t)height
+                    ) != RETURN_SUCCESS) {
+                    log_error("Failed to handle window resize\n");
+                    break;
+                }
+
+                engine->window.width = (uint32_t)width;
+                engine->window.height = (uint32_t)height;
+                engine->camera.aspect = (f32)width / (f32)height;
+                glm_perspective_resize(
+                    engine->camera.aspect, engine->camera.proj_matrix
+                );
+                camera_changed = true;
+            } break;
+            case RAIJIN_WINDOW_EVENT_KEY_DOWN: {
+                if (event.data.key.key == RAIJIN_WINDOW_KEY_ESCAPE) {
+                    engine->window.should_close = true;
+                }
+                if (event.data.key.key == RAIJIN_WINDOW_KEY_TAB) {
+                    engine->renderer.enable_edges ^= true;
+                }
+            } break;
+            case RAIJIN_WINDOW_EVENT_MOUSE_WHEEL: {
+                PanOrbitCamera_zoom(&engine->camera, event.data.wheel.delta);
+                camera_changed = true;
+            } break;
+            case RAIJIN_WINDOW_EVENT_MOUSE_BUTTON_DOWN:
+            case RAIJIN_WINDOW_EVENT_MOUSE_BUTTON_UP: {
+                bool pressed =
+                    event.type == RAIJIN_WINDOW_EVENT_MOUSE_BUTTON_DOWN;
+                switch (event.data.mouse_button.button) {
+                    case RAIJIN_WINDOW_MOUSE_BUTTON_LEFT:
+                        engine->mouse.button_left = pressed;
+                        break;
+                    case RAIJIN_WINDOW_MOUSE_BUTTON_MIDDLE:
+                        engine->mouse.button_middle = pressed;
+                        break;
+                    case RAIJIN_WINDOW_MOUSE_BUTTON_RIGHT:
+                        engine->mouse.button_right = pressed;
+                        break;
+                    case RAIJIN_WINDOW_MOUSE_BUTTON_UNKNOWN:
+                        break;
+                }
+                engine->mouse.position[0] = event.data.mouse_button.x;
+                engine->mouse.position[1] = event.data.mouse_button.y;
+            } break;
+            case RAIJIN_WINDOW_EVENT_MOUSE_MOTION: {
+                vec2 delta = {
+                    event.data.mouse_motion.x - engine->mouse.position[0],
+                    event.data.mouse_motion.y - engine->mouse.position[1],
+                };
+                if (engine->mouse.button_left) {
+                    PanOrbitCamera_orbit(&engine->camera, delta);
+                    camera_changed = true;
+                } else if (engine->mouse.button_right) {
+                    PanOrbitCamera_pan(&engine->camera, delta);
+                    camera_changed = true;
+                }
+                engine->mouse.position[0] = event.data.mouse_motion.x;
+                engine->mouse.position[1] = event.data.mouse_motion.y;
+            } break;
+            case RAIJIN_WINDOW_EVENT_NONE:
+                break;
+        }
+
+        if (camera_changed) {
+            Renderer_update_uniforms(
+                &engine->renderer,
+                engine->camera.proj_matrix,
+                engine->camera.view_matrix
+            );
+        }
+    }
 }
 
 void Raijin_destroy(Raijin* engine) {
     for (u32 i = 0; i < engine->assemblies.count; ++i) {
         Assembly* assembly = &engine->assemblies.items[i];
         AssemblyComponentArray_free(&assembly->components);
-        log_debug("Assy component %d free.", i);
+        log_debug("Assy component %d free.\n", i);
     }
 
     AssemblyArray_free(&engine->assemblies);
-    log_debug("Assy array free.");
+    log_debug("Assy array free.\n");
     Renderer_destroy(&engine->renderer);
-    log_debug("Renderer free.");
+    log_debug("Renderer free.\n");
 
     if (engine->window.handle != NULL) {
-        SdlWindow_destroy(&engine->window);
+        RaijinWindow_destroy(&engine->window);
     }
 }
 // #endif

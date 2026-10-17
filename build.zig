@@ -10,6 +10,7 @@ const C_FLAGS: []const []const u8 = &.{
     "-pedantic",
     "-Wno-gnu-zero-variadic-macro-arguments",
     "-DCGLM_FORCE_DEPTH_ZERO_TO_ONE",
+    "-D_POSIX_C_SOURCE=200809L",
 };
 
 const INCLUDE_DIRS: []const []const u8 = &.{
@@ -17,6 +18,7 @@ const INCLUDE_DIRS: []const []const u8 = &.{
     "lib/wgpu/include",
     "lib/cglm/include",
     "lib/cimpl/include",
+    "lib/logging/include",
 };
 
 pub fn build(b: *std.Build) void {
@@ -37,7 +39,7 @@ fn addRaijinExe(
     optimize: std.builtin.OptimizeMode,
     name: []const u8,
     src: []const u8,
-    embedded_shaders: std.Build.LazyPath
+    embedded_shaders: std.Build.LazyPath,
 ) void {
     const mod = b.createModule(.{
         .target = target,
@@ -54,11 +56,19 @@ fn addRaijinExe(
         .flags = C_FLAGS,
     });
     mod.addCSourceFile(.{
+        .file = b.path("lib/logging/logging.c"),
+        .flags = C_FLAGS,
+    });
+    mod.addCSourceFile(.{
         .file = b.path("src/core.c"),
         .flags = C_FLAGS,
     });
     mod.addCSourceFile(.{
         .file = b.path("src/mesh.c"),
+        .flags = C_FLAGS,
+    });
+    mod.addCSourceFile(.{
+        .file = b.path("src/raijin_sdl3.c"),
         .flags = C_FLAGS,
     });
 
@@ -72,6 +82,7 @@ fn addRaijinExe(
     mod.linkSystemLibrary("m", .{});
     mod.linkSystemLibrary("dl", .{});
     mod.linkSystemLibrary("SDL3", .{});
+    mod.linkSystemLibrary("pthread", .{});
     mod.linkSystemLibrary("unwind", .{});
 
     const exe = b.addExecutable(.{

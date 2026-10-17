@@ -4,16 +4,18 @@
 
 #include <errno.h>
 
+#include "logging.h"
+
 static ReturnStatus monotonic_time_ns(uint64_t* out) {
     struct timespec now;
     if (out == NULL) return RETURN_FAILURE;
     if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
-        log_error("Failed to read monotonic clock");
+        log_error("Failed to read monotonic clock\n");
         return RETURN_FAILURE;
     }
 
     if (now.tv_sec < 0 || now.tv_nsec < 0) {
-        log_error("Monotonic clock returned a negative value");
+        log_error("Monotonic clock returned a negative value\n");
         return RETURN_FAILURE;
     }
 
@@ -21,7 +23,7 @@ static ReturnStatus monotonic_time_ns(uint64_t* out) {
     const uint64_t nanoseconds = (uint64_t)now.tv_nsec;
 
     if (seconds > (UINT64_MAX - nanoseconds) / UINT64_C(1000000000)) {
-        log_error("Monotonic clock value overflow");
+        log_error("Monotonic clock value overflow\n");
         return RETURN_FAILURE;
     }
 
@@ -62,7 +64,7 @@ WGPUBuffer create_buffer(
 
     WGPUBuffer buffer = wgpuDeviceCreateBuffer(device, &buffer_desc);
     if (buffer == NULL) {
-        log_error("Failed to create buffer: %s", label);
+        log_error("Failed to create buffer: %s\n", label);
     }
     return buffer;
 }
@@ -114,7 +116,7 @@ ReturnStatus wait_for_gpu_futures(
                         )) {
                         log_error(
                             "WaitAny succeeded without invoking a supplied "
-                            "callback"
+                            "callback\n"
                         );
                         return RETURN_FAILURE;
                     }
@@ -128,7 +130,7 @@ ReturnStatus wait_for_gpu_futures(
                 case WGPUWaitStatus_UnsupportedMixedSources:
                 default:
                     log_error(
-                        "WaitAny failed: status=%u", (uint32_t)wait_status
+                        "WaitAny failed: status=%u\n", (uint32_t)wait_status
                     );
                     return RETURN_FAILURE;
             }
@@ -154,7 +156,7 @@ ReturnStatus wait_for_gpu_futures(
         };
 
         if (nanosleep(&sleep_time, NULL) != 0 && errno != EINTR) {
-            log_error("Failed to sleep while polling WGPU future");
+            log_error("Failed to sleep while polling WGPU future\n");
             return RETURN_FAILURE;
         }
     }

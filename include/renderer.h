@@ -9,6 +9,7 @@
 #include "cglm/vec3.h"
 #include "cimpl_core.h"
 #include "core.h"
+#include "logging.h"
 #include "mesh.h"
 #include "webgpu.h"
 #include "wgpu.h"
@@ -228,29 +229,29 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         return RETURN_FAILURE;
     }
     if (mesh->vertices.items == NULL || mesh->vertices.count == 0) {
-        log_error("Mesh has no vertices");
+        log_error("Mesh has no vertices\n");
         return RETURN_FAILURE;
     }
     if (mesh->indices.items == NULL || mesh->indices.count == 0) {
-        log_error("Mesh has no triangle indices");
+        log_error("Mesh has no triangle indices\n");
         return RETURN_FAILURE;
     }
     if (mesh->instance_capacity == 0) {
-        log_error("Mesh instance capacity is zero");
+        log_error("Mesh instance capacity is zero\n");
         return RETURN_FAILURE;
     }
     if (mesh->edge_indices.count > 0 && mesh->edge_indices.items == NULL) {
-        log_error("Mesh edge indices are invalid");
+        log_error("Mesh edge indices are invalid\n");
         return RETURN_FAILURE;
     }
     if (mesh->edge_indices.count > 0 && mesh->edge_instance_capacity == 0) {
-        log_error("Mesh edge instance capacity is zero");
+        log_error("Mesh edge instance capacity is zero\n");
         return RETURN_FAILURE;
     }
     if (mesh->vertex_buffer != NULL || mesh->instance_buffer != NULL ||
         mesh->index_buffer != NULL || mesh->edge_instance_buffer != NULL ||
         mesh->edge_index_buffer != NULL) {
-        log_error("Mesh GPU buffers already exist");
+        log_error("Mesh GPU buffers already exist\n");
         return RETURN_FAILURE;
     }
 
@@ -360,7 +361,7 @@ failure:
 MeshHandle Renderer_register_mesh(Renderer* renderer, Mesh* mesh_template) {
     if (renderer == NULL || mesh_template == NULL) return INVALID_MESH_HANDLE;
     if (renderer->meshes.count == UINT32_MAX) {
-        log_error("Mesh handle capacity exhausted");
+        log_error("Mesh handle capacity exhausted\n");
         return INVALID_MESH_HANDLE;
     }
 
@@ -498,7 +499,7 @@ ReturnStatus Renderer_create_depth_texture(
     WGPUTexture new_texture =
         wgpuDeviceCreateTexture(renderer->device, &depth_texture_desc);
     if (new_texture == NULL) {
-        log_error("Failed to create new depth texture");
+        log_error("Failed to create new depth texture\n");
         return RETURN_FAILURE;
     }
 
@@ -517,7 +518,7 @@ ReturnStatus Renderer_create_depth_texture(
     WGPUTextureView new_view =
         wgpuTextureCreateView(new_texture, &depth_texture_view_desc);
     if (new_view == NULL) {
-        log_error("Failed to create new depth texture view");
+        log_error("Failed to create new depth texture view\n");
         wgpuTextureRelease(new_texture);
         return RETURN_FAILURE;
     }
@@ -560,7 +561,7 @@ ReturnStatus Renderer_create_render_pipeline(
     WGPUShaderModule shader =
         wgpuDeviceCreateShaderModule(renderer->device, &shader_desc);
     if (!shader) {
-        log_error("Failed to create solid shader module");
+        log_error("Failed to create solid shader module\n");
         return RETURN_FAILURE;
     }
 
@@ -620,7 +621,7 @@ ReturnStatus Renderer_create_render_pipeline(
         renderer->device, &solid_pipeline_layout_desc
     );
     if (!solid_pipeline_layout) {
-        log_error("Failed to create solid pipeline layout");
+        log_error("Failed to create solid pipeline layout\n");
         wgpuShaderModuleRelease(shader);
         return RETURN_FAILURE;
     }
@@ -648,7 +649,7 @@ ReturnStatus Renderer_create_render_pipeline(
     wgpuPipelineLayoutRelease(solid_pipeline_layout);
     wgpuShaderModuleRelease(shader);
     if (*pipeline == NULL) {
-        log_error("Failed to create solid render pipeline");
+        log_error("Failed to create solid render pipeline\n");
         return RETURN_FAILURE;
     }
     return RETURN_SUCCESS;
@@ -789,7 +790,7 @@ static ReturnStatus Renderer_request_device(Renderer* renderer) {
         if (renderer->device_lost_future.id != 0) {
             renderer->device_lost_future_available = true;
         } else {
-            log_warn("Device-lost future unavailable. Using bounded polling");
+            log_warn("Device-lost future unavailable. Using bounded polling\n");
         }
     }
     status = RETURN_SUCCESS;
@@ -825,17 +826,17 @@ ReturnStatus Renderer_init_windowed(
     ReturnStatus adapter_status =
         Renderer_request_adapter(renderer, &adapter_options);
     if (adapter_status != RETURN_SUCCESS) return adapter_status;
-    log_debug("Adapter request successful");
+    log_debug("Adapter request successful\n");
 
     // Device request
     ReturnStatus device_status = Renderer_request_device(renderer);
     if (device_status != RETURN_SUCCESS) return device_status;
-    log_debug("Device request successful");
+    log_debug("Device request successful\n");
 
     // Get device queue
     renderer->queue = wgpuDeviceGetQueue(renderer->device);
     if (renderer->queue == NULL) {
-        log_error("Failed to get device queue");
+        log_error("Failed to get device queue\n");
         return RETURN_FAILURE;
     }
 
@@ -848,11 +849,11 @@ ReturnStatus Renderer_init_windowed(
     );
     if (surface_caps_status != WGPUStatus_Success ||
         surface_caps.formatCount == 0) {
-        log_error("No supported surface formats found");
+        log_error("No supported surface formats found\n");
         wgpuSurfaceCapabilitiesFreeMembers(surface_caps);
         return RETURN_FAILURE;
     }
-    log_debug("%ld surface formats found.", surface_caps.formatCount);
+    log_debug("%ld surface formats found.\n", surface_caps.formatCount);
     WGPUTextureFormat texture_format = WGPUTextureFormat_Undefined;
     bool output_requires_srgb_encoding = false;
 
@@ -876,7 +877,7 @@ ReturnStatus Renderer_init_windowed(
         }
     }
     if (texture_format == WGPUTextureFormat_Undefined) {
-        log_error("No supported SDR surface formats found");
+        log_error("No supported SDR surface formats found\n");
         wgpuSurfaceCapabilitiesFreeMembers(surface_caps);
         return RETURN_FAILURE;
     }
@@ -896,7 +897,7 @@ ReturnStatus Renderer_init_windowed(
         &renderer->render_target.windowed.surface_config
     );
     log_debug(
-        "Configured surface size: [%d, %d]",
+        "Configured surface size: [%d, %d]\n",
         renderer->render_target.windowed.surface_config.width,
         renderer->render_target.windowed.surface_config.height
     );
@@ -925,7 +926,7 @@ ReturnStatus Renderer_init_windowed(
     renderer->uniform_buffer =
         wgpuDeviceCreateBuffer(renderer->device, &uniform_buffer_desc);
     if (renderer->uniform_buffer == NULL) {
-        log_error("Failed to create uniform buffer");
+        log_error("Failed to create uniform buffer\n");
         return RETURN_FAILURE;
     }
 
@@ -955,7 +956,7 @@ ReturnStatus Renderer_init_windowed(
         renderer->device, &bind_group_layout_desc
     );
     if (bind_group_layout == NULL) {
-        log_error("Failed to create bind group layout");
+        log_error("Failed to create bind group layout\n");
         return RETURN_FAILURE;
     }
 
@@ -977,7 +978,7 @@ ReturnStatus Renderer_init_windowed(
     renderer->uniform_bind_group =
         wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
     if (renderer->uniform_bind_group == NULL) {
-        log_error("Failed to create uniform bind group");
+        log_error("Failed to create uniform bind group\n");
         wgpuBindGroupLayoutRelease(bind_group_layout);
         return RETURN_FAILURE;
     }
@@ -1046,17 +1047,17 @@ ReturnStatus Renderer_init_headless(
     ReturnStatus adapter_status =
         Renderer_request_adapter(renderer, &adapter_options);
     if (adapter_status != RETURN_SUCCESS) return adapter_status;
-    log_debug("Adapter request successful");
+    log_debug("Adapter request successful\n");
 
     // Device request
     ReturnStatus device_status = Renderer_request_device(renderer);
     if (device_status != RETURN_SUCCESS) return device_status;
-    log_debug("Device request successful");
+    log_debug("Device request successful\n");
 
     // Get device queue
     renderer->queue = wgpuDeviceGetQueue(renderer->device);
     if (renderer->queue == NULL) {
-        log_error("Failed to get device queue");
+        log_error("Failed to get device queue\n");
         return RETURN_FAILURE;
     }
 
@@ -1084,7 +1085,7 @@ ReturnStatus Renderer_init_headless(
     renderer->render_target.headless.texture =
         wgpuDeviceCreateTexture(renderer->device, &texture_desc);
     if (renderer->render_target.headless.texture == NULL) {
-        log_error("Failed to create headless render texture");
+        log_error("Failed to create headless render texture\n");
         return RETURN_FAILURE;
     }
 
@@ -1112,7 +1113,7 @@ ReturnStatus Renderer_init_headless(
     renderer->uniform_buffer =
         wgpuDeviceCreateBuffer(renderer->device, &uniform_buffer_desc);
     if (renderer->uniform_buffer == NULL) {
-        log_error("Failed to create uniform buffer");
+        log_error("Failed to create uniform buffer\n");
         return RETURN_FAILURE;
     }
 
@@ -1142,7 +1143,7 @@ ReturnStatus Renderer_init_headless(
         renderer->device, &bind_group_layout_desc
     );
     if (bind_group_layout == NULL) {
-        log_error("Failed to create bind group layout");
+        log_error("Failed to create bind group layout\n");
         return RETURN_FAILURE;
     }
 
@@ -1164,7 +1165,7 @@ ReturnStatus Renderer_init_headless(
     renderer->uniform_bind_group =
         wgpuDeviceCreateBindGroup(renderer->device, &bind_group_desc);
     if (renderer->uniform_bind_group == NULL) {
-        log_error("Failed to create uniform bind group");
+        log_error("Failed to create uniform bind group\n");
         wgpuBindGroupLayoutRelease(bind_group_layout);
         return RETURN_FAILURE;
     }
@@ -1231,7 +1232,7 @@ ReturnStatus Renderer_render_mesh(
         DrawCommand* cmd = &renderer->draw_commands.items[i];
         if (cmd->mesh_handle == mesh_handle) {
             if (InstanceArray_push(&instances, cmd->instance) != RETURN_OK) {
-                log_error("Failed to push to instance array");
+                log_error("Failed to push to instance array\n");
                 status = RETURN_FAILURE;
                 goto cleanup;
             }
@@ -1248,7 +1249,7 @@ ReturnStatus Renderer_render_mesh(
         if (Mesh_realloc_instance_buffer(
                 mesh, renderer->device, instances.count
             ) != RETURN_SUCCESS) {
-            log_error("Failed to reallocate instance array");
+            log_error("Failed to reallocate instance array\n");
             status = RETURN_FAILURE;
             goto cleanup;
         }
@@ -1313,7 +1314,7 @@ ReturnStatus Renderer_render_mesh_edges(
             memcpy(&instance, &cmd->instance, sizeof(instance));
             glm_vec4_one(instance.color);
             if (InstanceArray_push(&instances, instance) != RETURN_OK) {
-                log_error("Failed to push to instance array");
+                log_error("Failed to push to instance array\n");
                 status = RETURN_FAILURE;
                 goto cleanup;
             }
@@ -1328,7 +1329,7 @@ ReturnStatus Renderer_render_mesh_edges(
         if (Mesh_realloc_edge_instance_buffer(
                 mesh, renderer->device, instances.count
             ) != RETURN_SUCCESS) {
-            log_error("Failed to reallocate instance array");
+            log_error("Failed to reallocate instance array\n");
             status = RETURN_FAILURE;
             goto cleanup;
         }
@@ -1402,7 +1403,7 @@ ReturnStatus Renderer_render_pass_solid(
     WGPURenderPassEncoder render_pass_encoder =
         wgpuCommandEncoderBeginRenderPass(command_encoder, &render_pass_desc);
     if (render_pass_encoder == NULL) {
-        log_error("Failed to begin solid render pass");
+        log_error("Failed to begin solid render pass\n");
         return RETURN_FAILURE;
     }
     wgpuRenderPassEncoderSetPipeline(
@@ -1416,7 +1417,7 @@ ReturnStatus Renderer_render_pass_solid(
     for (u32 i = 0; i < renderer->meshes.count; ++i) {
         if (Renderer_render_mesh(renderer, i, render_pass_encoder) !=
             RETURN_SUCCESS) {
-            log_error("Failed to render mesh %d", i);
+            log_error("Failed to render mesh %d\n", i);
             wgpuRenderPassEncoderEnd(render_pass_encoder);
             wgpuRenderPassEncoderRelease(render_pass_encoder);
             return RETURN_FAILURE;
@@ -1460,7 +1461,7 @@ ReturnStatus Renderer_render_pass_edges(
     WGPURenderPassEncoder render_pass_encoder =
         wgpuCommandEncoderBeginRenderPass(command_encoder, &render_pass_desc);
     if (render_pass_encoder == NULL) {
-        log_error("Failed to begin edges render pass");
+        log_error("Failed to begin edges render pass\n");
         return RETURN_FAILURE;
     }
     wgpuRenderPassEncoderSetPipeline(
@@ -1474,7 +1475,7 @@ ReturnStatus Renderer_render_pass_edges(
     for (u32 i = 0; i < renderer->meshes.count; ++i) {
         if (Renderer_render_mesh_edges(renderer, i, render_pass_encoder) !=
             RETURN_SUCCESS) {
-            log_error("Failed to render mesh edges %d", i);
+            log_error("Failed to render mesh edges %d\n", i);
             wgpuRenderPassEncoderEnd(render_pass_encoder);
             wgpuRenderPassEncoderRelease(render_pass_encoder);
             return RETURN_FAILURE;
@@ -1500,13 +1501,13 @@ ReturnStatus Renderer_render_to_view(
     command_encoder =
         wgpuDeviceCreateCommandEncoder(renderer->device, &command_encoder_desc);
     if (command_encoder == NULL) {
-        log_error("Failed to create command encoder");
+        log_error("Failed to create command encoder\n");
         goto cleanup;
     }
 
     if (Renderer_render_pass_solid(renderer, command_encoder, texture_view) !=
         RETURN_SUCCESS) {
-        log_error("Failed solid render pass");
+        log_error("Failed solid render pass\n");
         goto cleanup;
     }
 
@@ -1515,7 +1516,7 @@ ReturnStatus Renderer_render_to_view(
         if (Renderer_render_pass_edges(
                 renderer, command_encoder, texture_view
             ) != RETURN_SUCCESS) {
-            log_error("Failed edges render pass");
+            log_error("Failed edges render pass\n");
             goto cleanup;
         }
     }
@@ -1526,7 +1527,7 @@ ReturnStatus Renderer_render_to_view(
     command_buffer =
         wgpuCommandEncoderFinish(command_encoder, &command_buffer_desc);
     if (command_buffer == NULL) {
-        log_error("Failed to create command buffer");
+        log_error("Failed to create command buffer\n");
         status = RETURN_FAILURE;
         goto cleanup;
     }
@@ -1561,7 +1562,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                 renderer->render_target.headless.texture, &texture_view_desc
             );
             if (texture_view == NULL) {
-                log_error("Failed to create headless texture view");
+                log_error("Failed to create headless texture view\n");
                 status = RETURN_FAILURE;
                 break;
             }
@@ -1585,7 +1586,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                     WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
                 surface_texture.status !=
                     WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
-                log_error("Failed to get surface texture");
+                log_error("Failed to get surface texture\n");
                 // TODO (mmckenna) reconfigure surface and re-initialize depth
                 // texture
                 status = RETURN_FAILURE;
@@ -1597,11 +1598,11 @@ ReturnStatus Renderer_render(Renderer* renderer) {
 
             if (surface_texture.status ==
                 WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
-                log_warn("Sub-optimal WGPU surface texture status");
+                log_warn("Sub-optimal WGPU surface texture status\n");
             }
 
             if (surface_texture.texture == NULL) {
-                log_error("Surface texture must not be NULL");
+                log_error("Surface texture must not be NULL\n");
                 status = RETURN_FAILURE;
                 break;
             }
@@ -1610,7 +1611,7 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                 surface_texture.texture, &texture_view_desc
             );
             if (texture_view == NULL) {
-                log_error("Failed to create windowed texture view");
+                log_error("Failed to create windowed texture view\n");
                 wgpuTextureRelease(surface_texture.texture);
                 status = RETURN_FAILURE;
                 break;
@@ -1626,14 +1627,14 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                 wgpuSurfacePresent(renderer->render_target.windowed.surface);
             // TODO (mmckenna): Handle each status variant
             if (present_status != WGPUStatus_Success) {
-                log_error("Failed to present surface");
+                log_error("Failed to present surface\n");
                 status = RETURN_FAILURE;
             }
             wgpuTextureViewRelease(texture_view);
             wgpuTextureRelease(surface_texture.texture);
         } break;
         default: {
-            log_error("Unknown render mode: %d", renderer->render_mode);
+            log_error("Unknown render mode: %d\n", renderer->render_mode);
             status = RETURN_FAILURE;
         } break;
     }
@@ -1683,34 +1684,34 @@ void Renderer_destroy(Renderer* renderer) {
         Mesh* mesh = &renderer->meshes.items[i];
         Mesh_release_gpu_buffers(mesh);
         Mesh_release_cpu_arrays(mesh);
-        log_debug("Mesh %d free.", i);
+        log_debug("Mesh %d free.\n", i);
     }
     MeshArray_free(&renderer->meshes);
-    log_debug("Mesh array free.");
+    log_debug("Mesh array free.\n");
 
     if (renderer->uniform_bind_group != NULL) {
         wgpuBindGroupRelease(renderer->uniform_bind_group);
-        log_debug("Uniform bind group released.");
+        log_debug("Uniform bind group released.\n");
     }
     if (renderer->uniform_buffer != NULL) {
         wgpuBufferRelease(renderer->uniform_buffer);
-        log_debug("Uniform buffer released.");
+        log_debug("Uniform buffer released.\n");
     }
     if (renderer->solid_pipeline != NULL) {
         wgpuRenderPipelineRelease(renderer->solid_pipeline);
-        log_debug("Solid pipeline released.");
+        log_debug("Solid pipeline released.\n");
     }
     if (renderer->edges_pipeline != NULL) {
         wgpuRenderPipelineRelease(renderer->edges_pipeline);
-        log_debug("Edges pipeline released.");
+        log_debug("Edges pipeline released.\n");
     }
     if (renderer->depth_texture_view != NULL) {
         wgpuTextureViewRelease(renderer->depth_texture_view);
-        log_debug("Depth texture view released.");
+        log_debug("Depth texture view released.\n");
     }
     if (renderer->depth_texture != NULL) {
         wgpuTextureRelease(renderer->depth_texture);
-        log_debug("Depth texture released.");
+        log_debug("Depth texture released.\n");
     }
     switch (renderer->render_mode) {
         case RENDER_MODE_WINDOWED: {
@@ -1719,13 +1720,13 @@ void Renderer_destroy(Renderer* renderer) {
                     renderer->render_target.windowed.surface
                 );
                 wgpuSurfaceRelease(renderer->render_target.windowed.surface);
-                log_debug("Window surface released.");
+                log_debug("Window surface released.\n");
             }
         } break;
         case RENDER_MODE_HEADLESS: {
             if (renderer->render_target.headless.texture != NULL) {
                 wgpuTextureRelease(renderer->render_target.headless.texture);
-                log_debug("Headless texture released.");
+                log_debug("Headless texture released.\n");
             }
         } break;
     }
@@ -1738,7 +1739,7 @@ void Renderer_destroy(Renderer* renderer) {
 
     if (renderer->queue != NULL) {
         wgpuQueueRelease(renderer->queue);
-        log_debug("Queue released.");
+        log_debug("Queue released.\n");
     }
 
     if (renderer->device_request.device != NULL) {
@@ -1747,7 +1748,7 @@ void Renderer_destroy(Renderer* renderer) {
     }
     if (renderer->device != NULL) {
         wgpuDeviceRelease(renderer->device);
-        log_debug("Device released.");
+        log_debug("Device released.\n");
     }
 
     if (renderer->adapter_request.adapter != NULL) {
@@ -1756,12 +1757,12 @@ void Renderer_destroy(Renderer* renderer) {
     }
     if (renderer->adapter != NULL) {
         wgpuAdapterRelease(renderer->adapter);
-        log_debug("Adapter released.");
+        log_debug("Adapter released.\n");
     }
 
     if (renderer->instance != NULL) {
         wgpuInstanceRelease(renderer->instance);
-        log_debug("Instance released.");
+        log_debug("Instance released.\n");
     }
 
     renderer->buffer_map = (WgpuBufferMapContext){
@@ -1772,7 +1773,7 @@ void Renderer_destroy(Renderer* renderer) {
 ReturnStatus Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
     // Avoid zero-size textures (minimized window)
     if (width == 0 || height == 0) {
-        log_error("Invalid render size: width=%d, height=%d", width, height);
+        log_error("Invalid render size: width=%d, height=%d\n", width, height);
         return RETURN_FAILURE;
     }
 
@@ -1795,7 +1796,7 @@ ReturnStatus Renderer_handle_resize(Renderer* renderer, u32 width, u32 height) {
     );
 
     log_debug(
-        "Surface configured successfully: width=%d, height=%d", width, height
+        "Surface configured successfully: width=%d, height=%d\n", width, height
     );
     return RETURN_SUCCESS;
 }
@@ -1822,13 +1823,13 @@ ReturnStatus Renderer_copy_frame_to_buffer(
     WGPUCommandBuffer command_buffer = NULL;
 
     if (buffer == NULL) {
-        log_error("Copy frame destination buffer was NULL.");
+        log_error("Copy frame destination buffer was NULL.\n");
         goto cleanup;
     }
 
     if (renderer->render_mode != RENDER_MODE_HEADLESS) {
         log_error(
-            "You must be using headless render mode to copy frame to buffer."
+            "You must be using headless render mode to copy frame to buffer.\n"
         );
         goto cleanup;
     }
@@ -1858,7 +1859,7 @@ ReturnStatus Renderer_copy_frame_to_buffer(
 
     if (unpadded_bytes_per_row > UINT32_MAX - (alignment - 1)) {
         log_error(
-            "Unexpected unpadded bytes per row: %" PRIu64,
+            "Unexpected unpadded bytes per row: %" PRIu64 "\n",
             unpadded_bytes_per_row
         );
         goto cleanup;
@@ -1869,7 +1870,8 @@ ReturnStatus Renderer_copy_frame_to_buffer(
 
     if (height != 0 && padded_bytes_per_row > UINT64_MAX / (u64)height) {
         log_error(
-            "Unexpected padded bytes per row: %" PRIu64, padded_bytes_per_row
+            "Unexpected padded bytes per row: %" PRIu64 "\n",
+            padded_bytes_per_row
         );
         goto cleanup;
     }
@@ -1877,7 +1879,7 @@ ReturnStatus Renderer_copy_frame_to_buffer(
     const u64 staging_buffer_size = padded_bytes_per_row * (u64)height;
     const u64 output_buffer_size = unpadded_bytes_per_row * (u64)height;
     if (staging_buffer_size > SIZE_MAX || output_buffer_size > SIZE_MAX) {
-        log_error("Readback size exceeds SIZE_MAX");
+        log_error("Readback size exceeds SIZE_MAX\n");
         goto cleanup;
     }
 
@@ -1888,7 +1890,7 @@ ReturnStatus Renderer_copy_frame_to_buffer(
     if (buffer_capacity < output_buffer_size) {
         log_error(
             "Buffer of size %" PRIu64 " is too small.  Expected %" PRIu64
-            " minimum.",
+            " minimum.\n",
             buffer_capacity,
             output_buffer_size
         );
@@ -1902,7 +1904,7 @@ ReturnStatus Renderer_copy_frame_to_buffer(
         "Readback Staging Buffer"
     );
     if (staging_buffer == NULL) {
-        log_error("Failed to create staging buffer.");
+        log_error("Failed to create staging buffer.\n");
         goto cleanup;
     }
 
@@ -2021,7 +2023,7 @@ ReturnStatus Renderer_copy_frame_to_buffer(
             map_ctx->staging_buffer, 0, staging_size
         );
         if (mapped_data == NULL) {
-            log_error("Failed to get mapped readback range");
+            log_error("Failed to get mapped readback range\n");
             Renderer_retire_buffer_map(renderer);
             goto cleanup;
         }
@@ -2076,13 +2078,15 @@ void adapter_request_callback(
     ctx->adapter = adapter;
 
     if (status == WGPURequestAdapterStatus_Success) {
-        log_info("Adapter acquired successfully");
+        log_info("Adapter acquired successfully\n");
     } else if (message.length > 0) {
         log_error(
-            "Failed to acquire adapter: %.*s", (int)message.length, message.data
+            "Failed to acquire adapter: %.*s\n",
+            (int)message.length,
+            message.data
         );
     } else {
-        log_error("Failed to acquire adapter");
+        log_error("Failed to acquire adapter\n");
     }
 
     ctx->completed = true;
@@ -2107,13 +2111,15 @@ void device_request_callback(
     ctx->device = device;
 
     if (status == WGPURequestDeviceStatus_Success) {
-        log_info("Device acquired successfully");
+        log_info("Device acquired successfully\n");
     } else if (message.length > 0) {
         log_error(
-            "Failed to acquire device: %.*s", (int)message.length, message.data
+            "Failed to acquire device: %.*s\n",
+            (int)message.length,
+            message.data
         );
     } else {
-        log_error("Failed to acquire device");
+        log_error("Failed to acquire device\n");
     }
 
     ctx->completed = true;
@@ -2136,16 +2142,16 @@ void device_lost_callback(
     ctx->reason = reason;
 
     if (reason == WGPUDeviceLostReason_Destroyed) {
-        log_debug("Device destroyed");
+        log_debug("Device destroyed\n");
     } else if (message.length > 0) {
         log_error(
-            "Device lost: reason=%u, message=%.*s",
+            "Device lost: reason=%u, message=%.*s\n",
             (uint32_t)reason,
             (int)message.length,
             message.data
         );
     } else {
-        log_error("Device lost: reason=%u", (uint32_t)reason);
+        log_error("Device lost: reason=%u\n", (uint32_t)reason);
     }
 
     ctx->completed = true;
@@ -2170,10 +2176,12 @@ void buffer_map_callback(
     if (status != WGPUMapAsyncStatus_Success && !expected_abort) {
         if (message.length > 0) {
             log_error(
-                "Failed to map buffer: %.*s", (int)message.length, message.data
+                "Failed to map buffer: %.*s\n",
+                (int)message.length,
+                message.data
             );
         } else {
-            log_error("Failed to map buffer");
+            log_error("Failed to map buffer\n");
         }
     }
 

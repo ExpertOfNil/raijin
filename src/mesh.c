@@ -1,10 +1,12 @@
 #include "mesh.h"
+
 #include "cglm/affine.h"
 #include "cglm/mat4.h"
 #include "cglm/quat.h"
 #include "cglm/vec3.h"
 #include "cimpl_core.h"
 #include "core.h"
+#include "logging.h"
 
 void Instance_set_position(Instance* instance, vec3 position) {
     glm_vec3_copy(position, instance->model_matrix[3]);
@@ -114,7 +116,7 @@ static ReturnStatus Mesh_grow_instance_buffer(
     }
 
     if ((u64)candidate_capacity > UINT64_MAX / sizeof(Instance)) {
-        log_error("Instance buffer size overflow");
+        log_error("Instance buffer size overflow\n");
         return RETURN_FAILURE;
     }
 
@@ -139,7 +141,7 @@ static ReturnStatus Mesh_grow_instance_buffer(
         wgpuBufferRelease(old_buffer);
     }
 
-    log_debug("New instance capacity: %u", candidate_capacity);
+    log_debug("New instance capacity: %u\n", candidate_capacity);
     return RETURN_SUCCESS;
 }
 
@@ -295,7 +297,7 @@ ReturnStatus Mesh_create_disc(Mesh* mesh, u32 divisions) {
     if (!Mesh_cpu_arrays_are_empty(mesh)) return RETURN_FAILURE;
 
     if (divisions < 3 || divisions > UINT32_MAX / 3) {
-        log_error("Invalid disc division count: %u", divisions);
+        log_error("Invalid disc division count: %u\n", divisions);
         return RETURN_FAILURE;
     }
 
@@ -368,7 +370,7 @@ failure:
 ReturnStatus Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
     if (!Mesh_cpu_arrays_are_empty(mesh)) return RETURN_FAILURE;
     if (divisions < 3 || divisions > UINT32_MAX / 2) {
-        log_error("Invalid sphere division count: %u", divisions);
+        log_error("Invalid sphere division count: %u\n", divisions);
         return RETURN_FAILURE;
     }
 
@@ -377,14 +379,14 @@ ReturnStatus Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
 
     uint64_t ring_vertex_count = (uint64_t)(latitude - 1) * (uint64_t)longitude;
     if (ring_vertex_count > UINT32_MAX / 6) {
-        log_error("Sphere division count is too large: %u", divisions);
+        log_error("Sphere division count is too large: %u\n", divisions);
         return RETURN_FAILURE;
     }
 
     uint64_t edge_segment_count =
         (uint64_t)longitude * (2 * (uint64_t)latitude - 1);
     if (edge_segment_count > UINT32_MAX / 2) {
-        log_error("Sphere edge count is too large: %u", divisions);
+        log_error("Sphere edge count is too large: %u\n", divisions);
         return RETURN_FAILURE;
     }
 
@@ -570,7 +572,7 @@ failure:
 ReturnStatus Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     if (!Mesh_cpu_arrays_are_empty(mesh)) return RETURN_FAILURE;
     if (divisions < 4 || divisions > UINT32_MAX / 12) {
-        log_error("Invalid cylinder division count: %u", divisions);
+        log_error("Invalid cylinder division count: %u\n", divisions);
         return RETURN_FAILURE;
     }
 
@@ -739,7 +741,7 @@ failure:
 ReturnStatus Mesh_create_cone(Mesh* mesh, u32 divisions) {
     if (!Mesh_cpu_arrays_are_empty(mesh)) return RETURN_FAILURE;
     if (divisions < 4 || divisions > UINT32_MAX / 6) {
-        log_error("Invalid cone division count: %u", divisions);
+        log_error("Invalid cone division count: %u\n", divisions);
         return RETURN_FAILURE;
     }
 
