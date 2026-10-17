@@ -10,8 +10,22 @@ set(
 )
 
 include(CTest)
-find_package(SDL3 REQUIRED CONFIG)
 find_package(Threads REQUIRED)
+
+# SDL3 windowing backend enabled by default
+option(RAIJIN_ENABLE_SDL3 "Enable the SDL3 window backend" ON)
+if (RAIJIN_ENABLE_SDL3)
+    find_package(SDL3 REQUIRED CONFIG)
+    set(
+        RAIJIN_WINDOW_BACKEND_SOURCE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin_sdl3.c"
+    )
+else()
+    set(
+        RAIJIN_WINDOW_BACKEND_SOURCE
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin_headless.c"
+    )
+endif()
 
 # Shader compile
 set(
@@ -58,9 +72,10 @@ target_link_libraries(logging
 
 add_library(raijin STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin_sdl3.c"
+    "${RAIJIN_WINDOW_BACKEND_SOURCE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/camera.c"
     "${RAIJIN_EMBEDDED_SHADERS_C}"
 )
 add_library(Raijin::Raijin ALIAS raijin)
@@ -81,11 +96,13 @@ target_link_libraries(raijin
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/wgpu/libwgpu_native.a"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/cglm/libcglm.a"
-        SDL3::SDL3
         Logging::Logging
         m
         dl
 )
+if(RAIJIN_ENABLE_SDL3)
+    target_link_libraries(raijin PRIVATE SDL3::SDL3)
+endif()
 
 add_executable(example-minimal
     "examples/minimal.c"
@@ -144,5 +161,25 @@ if(BUILD_TESTING)
     add_test(
         NAME raijin-mesh
         COMMAND raijin-test-mesh
+    )
+
+    add_executable(raijin-test-camera
+        tests/camera.c
+    )
+    target_include_directories(raijin-test-camera
+        PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cimpl/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/lib/cglm/include"
+    )
+
+    target_link_libraries(raijin-test-camera
+        PRIVATE
+        Raijin::Raijin
+    )
+
+    add_test(
+        NAME raijin-camera
+        COMMAND raijin-test-camera
     )
 endif()

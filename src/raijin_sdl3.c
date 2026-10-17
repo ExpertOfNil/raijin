@@ -56,6 +56,7 @@ bool RaijinWindow_init(
     window->handle = handle;
     window->width = width;
     window->height = height;
+    window->minimized = false;
     window->should_close = false;
     return true;
 }
@@ -79,6 +80,12 @@ bool RaijinWindow_poll_event(
                 translated.type = RAIJIN_WINDOW_EVENT_RESIZED;
                 translated.data.resized.width = event.window.data1;
                 translated.data.resized.height = event.window.data2;
+                break;
+            case SDL_EVENT_WINDOW_MINIMIZED:
+                translated.type = RAIJIN_WINDOW_EVENT_MINIMIZED;
+                break;
+            case SDL_EVENT_WINDOW_RESTORED:
+                translated.type = RAIJIN_WINDOW_EVENT_RESTORED;
                 break;
             case SDL_EVENT_KEY_DOWN:
                 translated.type = RAIJIN_WINDOW_EVENT_KEY_DOWN;
@@ -241,6 +248,7 @@ void RaijinWindow_destroy(RaijinWindow* window) {
     window->handle = NULL;
     window->width = 0;
     window->height = 0;
+    window->minimized = false;
     window->should_close = false;
 
     SDL_QuitSubSystem(SDL_INIT_VIDEO);

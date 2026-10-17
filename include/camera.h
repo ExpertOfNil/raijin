@@ -2,12 +2,8 @@
 #define CAMERA_H
 
 #include <cglm/cglm.h>
+#include <stdbool.h>
 
-#include "cglm/cam.h"
-#include "cglm/mat4.h"
-#include "cglm/quat.h"
-#include "cglm/util.h"
-#include "cglm/vec3.h"
 #include "cimpl_core.h"
 
 typedef struct PanOrbitCamera {
@@ -31,96 +27,26 @@ typedef struct PanOrbitCamera {
 
 void PanOrbitCamera_init(PanOrbitCamera* cam);
 void PanOrbitCamera_update(PanOrbitCamera* cam);
+bool PanOrbitCamera_look_at(
+    PanOrbitCamera* cam,
+    const float eye[3],
+    const float target[3],
+    const float up[3]
+);
+bool PanOrbitCamera_look_to(
+    PanOrbitCamera* cam,
+    const float eye[3],
+    const float direction[3],
+    const float up[3],
+    float orbit_distance
+);
+bool PanOrbitCamera_set_view_matrix(
+    PanOrbitCamera* cam, const float view_matrix[16]
+);
 void PanOrbitCamera_orbit(PanOrbitCamera* cam, vec2 mouse_delta);
 void PanOrbitCamera_pan(PanOrbitCamera* cam, vec2 mouse_delta);
+void PanOrbitCamera_zoom(PanOrbitCamera* cam, f32 scroll);
 f32 PanOrbitCamera_get_focal_distance(const PanOrbitCamera* cam);
 void PanOrbitCamera_set_focal_distance(PanOrbitCamera* cam, f32 dist);
-
-/* Functions */
-
-void PanOrbitCamera_init(PanOrbitCamera* cam) {
-    cam->z_near = 0.1f;
-    cam->z_far = 1000.0f;
-    cam->aspect = 16.0 / 9.0f;
-    cam->fovy = glm_rad(60.0f);
-    glm_vec3_copy(GLM_VEC3_ZERO, cam->target);
-    cam->distance = 10.0f;
-    cam->distance_min = 0.1f;
-    cam->distance_max = 1000.0f;
-    cam->mouse_speed = 0.005f;
-    cam->zoom_speed = 0.5f;
-    cam->pan_speed = 0.001f;
-
-    glm_quat_identity(cam->orientation);
-
-    glm_perspective(
-        cam->fovy, cam->aspect, cam->z_near, cam->z_far, cam->proj_matrix
-    );
-    PanOrbitCamera_update(cam);
-}
-
-void PanOrbitCamera_update(PanOrbitCamera* cam) {
-    glm_clamp(cam->distance, cam->distance_min, cam->distance_max);
-
-    vec3 offset;
-    glm_quat_rotatev(
-        cam->orientation, (vec3){0.0f, -cam->distance, 0.0}, offset
-    );
-
-    vec3 position;
-    glm_vec3_add(cam->target, offset, position);
-    vec3 up;
-    glm_quat_rotatev(cam->orientation, GLM_ZUP, up);
-    glm_lookat(position, cam->target, up, cam->view_matrix);
-}
-
-// TODO (mmckenna): add function for adding aspect ratio for resize
-
-void PanOrbitCamera_orbit(PanOrbitCamera* cam, vec2 mouse_delta) {
-    float angle = glm_vec2_norm(mouse_delta) * cam->mouse_speed;
-    if (angle < 1e-6f) return;
-
-    vec3 screen_axis = {-mouse_delta[1], 0.0f, -mouse_delta[0]};
-    glm_vec3_normalize(screen_axis);
-
-    vec3 world_axis;
-    glm_quat_rotatev(cam->orientation, screen_axis, world_axis);
-
-    vec4 q;
-    glm_quatv(q, angle, world_axis);
-    glm_quat_mul(q, cam->orientation, cam->orientation);
-    glm_quat_normalize(cam->orientation);
-    PanOrbitCamera_update(cam);
-}
-
-void PanOrbitCamera_pan(PanOrbitCamera* cam, vec2 mouse_delta) {
-    vec3 right, up;
-    glm_quat_rotatev(cam->orientation, GLM_XUP, right);
-    glm_quat_rotatev(cam->orientation, GLM_ZUP, up);
-
-    f32 scale = cam->pan_speed * cam->distance;
-
-    vec3 offset;
-    glm_vec3_scale(right, -mouse_delta[0] * scale, offset);
-    glm_vec3_muladds(up, mouse_delta[1] * scale, offset);
-
-    glm_vec3_add(cam->target, offset, cam->target);
-    PanOrbitCamera_update(cam);
-}
-
-void PanOrbitCamera_zoom(PanOrbitCamera* cam, f32 scroll) {
-    cam->distance -= scroll * cam->zoom_speed;
-    PanOrbitCamera_update(cam);
-}
-
-f32 PanOrbitCamera_get_focal_distance(const PanOrbitCamera* cam) {
-    return cam->proj_matrix[1][1];
-}
-
-void PanOrbitCamera_set_focal_distance(PanOrbitCamera* cam, f32 dist) {
-    cam->proj_matrix[0][0] =
-        (cam->proj_matrix[0][0] / cam->proj_matrix[1][1]) * dist;
-    cam->proj_matrix[1][1] = dist;
-}
 
 #endif /* CAMERA_H */

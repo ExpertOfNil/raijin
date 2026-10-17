@@ -2,8 +2,11 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
+#include "camera.h"
 #include "raijin/raijin.h"
+#include "renderer.h"
 
 _Static_assert(
     sizeof(((RaijinInstance*)0)->transform) == sizeof(mat4),
@@ -98,10 +101,161 @@ RaijinResult raijin_context_render(RaijinContext* ctx) {
         return RAIJIN_ERROR_INVALID_ARGUMENT;
     }
 
-    if (Raijin_render(&ctx->engine) != RETURN_SUCCESS) {
-        return RAIJIN_ERROR_RENDER;
+    ReturnStatus status = Raijin_render(&ctx->engine);
+    return raijin_result_from_status(status, RAIJIN_ERROR_RENDER);
+}
+
+RaijinResult raijin_context_poll_events(RaijinContext* ctx) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    if (ctx->render_mode != RAIJIN_RENDER_MODE_WINDOWED) {
+        return RAIJIN_ERROR_INVALID_STATE;
     }
 
+    Raijin_handle_events(&ctx->engine);
+
+    ctx->width = ctx->engine.window.width;
+    ctx->height = ctx->engine.window.height;
+
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_get_viewport_size(
+    const RaijinContext* ctx, uint32_t* out_width, uint32_t* out_height
+) {
+    // Headless contexts return fixed render dimensions
+    if (out_width != NULL) *out_width = 0;
+    if (out_height != NULL) *out_height = 0;
+
+    if (ctx == NULL || out_width == NULL || out_height == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    *out_width = ctx->width;
+    *out_height = ctx->height;
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_is_minimized(
+    const RaijinContext* ctx, uint32_t* out_is_minimized
+) {
+    if (out_is_minimized == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    *out_is_minimized = 0;
+
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    if (ctx->render_mode != RAIJIN_RENDER_MODE_WINDOWED) {
+        return RAIJIN_ERROR_INVALID_STATE;
+    }
+
+    *out_is_minimized =
+        ctx->engine.window.minimized ? UINT32_C(1) : UINT32_C(0);
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_camera_look_to(
+    RaijinContext* ctx,
+    const float* eye,
+    const float* direction,
+    const float* up,
+    float orbit_distance
+) {
+    if (ctx == NULL || eye == NULL || direction == NULL || up == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!PanOrbitCamera_look_to(
+            &ctx->engine.camera, eye, direction, up, orbit_distance
+        )) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    Renderer_update_uniforms(
+        &ctx->engine.renderer,
+        ctx->engine.camera.proj_matrix,
+        ctx->engine.camera.view_matrix
+    );
+
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_camera_set_view_matrix(
+    RaijinContext* ctx, const float view_matrix[16]
+) {
+    if (ctx == NULL || view_matrix == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!PanOrbitCamera_set_view_matrix(&ctx->engine.camera, view_matrix)) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    Renderer_update_uniforms(
+        &ctx->engine.renderer,
+        ctx->engine.camera.proj_matrix,
+        ctx->engine.camera.view_matrix
+    );
+
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_camera_look_at(
+    RaijinContext* ctx, const float* eye, const float* target, const float* up
+) {
+    if (ctx == NULL || eye == NULL || target == NULL || up == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!PanOrbitCamera_look_at(&ctx->engine.camera, eye, target, up)) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    Renderer_update_uniforms(
+        &ctx->engine.renderer,
+        ctx->engine.camera.proj_matrix,
+        ctx->engine.camera.view_matrix
+    );
+
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_camera_set_projection_matrix(
+    RaijinContext* ctx, const float* proj_matrix
+) {
+    if (ctx == NULL || proj_matrix == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    for (size_t i = 0; i < 16; ++i) {
+        if (!isfinite(proj_matrix[i])) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    memcpy(
+        ctx->engine.camera.proj_matrix,
+        proj_matrix,
+        sizeof(ctx->engine.camera.proj_matrix)
+    );
+
+    Renderer_update_uniforms(
+        &ctx->engine.renderer,
+        ctx->engine.camera.proj_matrix,
+        ctx->engine.camera.view_matrix
+    );
+
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_should_close(
+    const RaijinContext* ctx, uint32_t* out_should_close
+) {
+    if (out_should_close == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    *out_should_close = 0;
+
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    if (ctx->render_mode != RAIJIN_RENDER_MODE_WINDOWED) {
+        return RAIJIN_ERROR_INVALID_STATE;
+    }
+
+    *out_should_close =
+        ctx->engine.window.should_close ? UINT32_C(1) : UINT32_C(0);
     return RAIJIN_SUCCESS;
 }
 

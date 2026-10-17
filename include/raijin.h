@@ -11,11 +11,11 @@
 #include "cglm/mat4.h"
 #include "cimpl_core.h"
 #include "core.h"
+#include "logging.h"
 #include "mesh.h"
 #include "renderer.h"
 #include "webgpu.h"
 #include "window_backend.h"
-#include "logging.h"
 
 /* Types */
 
@@ -206,12 +206,19 @@ void Raijin_handle_events(Raijin* engine) {
 
                 engine->window.width = (uint32_t)width;
                 engine->window.height = (uint32_t)height;
+                engine->window.minimized = false;
                 engine->camera.aspect = (f32)width / (f32)height;
                 glm_perspective_resize(
                     engine->camera.aspect, engine->camera.proj_matrix
                 );
                 camera_changed = true;
             } break;
+            case RAIJIN_WINDOW_EVENT_MINIMIZED:
+                engine->window.minimized = true;
+                break;
+            case RAIJIN_WINDOW_EVENT_RESTORED:
+                engine->window.minimized = false;
+                break;
             case RAIJIN_WINDOW_EVENT_KEY_DOWN: {
                 if (event.data.key.key == RAIJIN_WINDOW_KEY_ESCAPE) {
                     engine->window.should_close = true;
@@ -458,6 +465,12 @@ void Raijin_assembly_add_mesh(
 }
 
 ReturnStatus Raijin_render(Raijin* engine) {
+    // Minimized rendering is a no-op
+    if (engine->renderer.render_mode == RENDER_MODE_WINDOWED &&
+        engine->window.minimized) {
+        engine->renderer.draw_commands.count = 0;
+        return RETURN_SUCCESS;
+    }
     return Renderer_render(&engine->renderer);
 }
 

@@ -1,5 +1,6 @@
 bin/
 /build
+/build-*
 nob
 nob.old
 AGENTS.md

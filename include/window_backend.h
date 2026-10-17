@@ -10,6 +10,7 @@ typedef struct {
     void* handle;
     uint32_t width;
     uint32_t height;
+    bool minimized;
     bool should_close;
 } RaijinWindow;
 
@@ -17,6 +18,8 @@ typedef enum {
     RAIJIN_WINDOW_EVENT_NONE,
     RAIJIN_WINDOW_EVENT_QUIT,
     RAIJIN_WINDOW_EVENT_RESIZED,
+    RAIJIN_WINDOW_EVENT_MINIMIZED,
+    RAIJIN_WINDOW_EVENT_RESTORED,
     RAIJIN_WINDOW_EVENT_KEY_DOWN,
     RAIJIN_WINDOW_EVENT_MOUSE_WHEEL,
     RAIJIN_WINDOW_EVENT_MOUSE_BUTTON_DOWN,

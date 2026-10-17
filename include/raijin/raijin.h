@@ -50,6 +50,35 @@ typedef struct RaijinInstance {
 RaijinResult raijin_context_create(
     const RaijinContextDesc* desc, RaijinContext** out
 );
+RaijinResult raijin_context_poll_events(RaijinContext* ctx);
+RaijinResult raijin_context_get_viewport_size(
+    const RaijinContext* ctx, uint32_t* out_width, uint32_t* out_height
+);
+RaijinResult raijin_context_is_minimized(
+    const RaijinContext* ctx, uint32_t* out_is_minimized
+);
+RaijinResult raijin_context_camera_look_to(
+    RaijinContext* ctx,
+    const float eye[3],
+    const float direction[3],
+    const float up[3],
+    float orbit_distance
+);
+RaijinResult raijin_context_camera_look_at(
+    RaijinContext* ctx,
+    const float eye[3],
+    const float target[3],
+    const float up[3]
+);
+RaijinResult raijin_context_camera_set_view_matrix(
+    RaijinContext* ctx, const float view_matrix[16]
+);
+RaijinResult raijin_context_camera_set_projection_matrix(
+    RaijinContext* ctx, const float proj_matrix[16]
+);
+RaijinResult raijin_context_should_close(
+    const RaijinContext* ctx, uint32_t* out_should_close
+);
 RaijinResult raijin_context_render(RaijinContext* ctx);
 RaijinResult raijin_context_readback_size(
     const RaijinContext* ctx, uint64_t* out_size_bytes

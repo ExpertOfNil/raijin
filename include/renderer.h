@@ -1581,24 +1581,48 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             wgpuSurfaceGetCurrentTexture(
                 renderer->render_target.windowed.surface, &surface_texture
             );
-            // TODO (mmckenna): Handle each status variant
-            if (surface_texture.status !=
-                    WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
-                surface_texture.status !=
-                    WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
-                log_error("Failed to get surface texture\n");
-                // TODO (mmckenna) reconfigure surface and re-initialize depth
-                // texture
-                status = RETURN_FAILURE;
+
+            switch (surface_texture.status) {
+                case WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal:
+                    break;
+                case WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal:
+                    log_warn("Sub-optimal WGPU surface texture status\n");
+                    break;
+                case WGPUSurfaceGetCurrentTextureStatus_Timeout:
+                    log_warn("Timed out acquiring surface texture\n");
+                    status = RETURN_TIMEOUT;
+                    break;
+                case WGPUSurfaceGetCurrentTextureStatus_DeviceLost:
+                    log_error("Device lost while acquiring surface texture\n");
+                    status = RETURN_DEVICE_LOST;
+                    break;
+                case WGPUSurfaceGetCurrentTextureStatus_Outdated:
+                    log_error("Surface is outdated\n");
+                    status = RETURN_FAILURE;
+                    break;
+                case WGPUSurfaceGetCurrentTextureStatus_Lost:
+                    log_error("Surface was lost\n");
+                    status = RETURN_FAILURE;
+                    break;
+                case WGPUSurfaceGetCurrentTextureStatus_OutOfMemory:
+                    log_error("Out of memory acquiring surface texture\n");
+                    status = RETURN_FAILURE;
+                    break;
+                case WGPUSurfaceGetCurrentTextureStatus_Error:
+                default:
+                    log_error(
+                        "Failed to acquire surface texture: status=%u\n",
+                        (uint32_t)surface_texture.status
+                    );
+                    status = RETURN_FAILURE;
+                    break;
+            }
+
+            if (status != RETURN_SUCCESS) {
                 if (surface_texture.texture != NULL) {
                     wgpuTextureRelease(surface_texture.texture);
                 }
                 break;
-            }
-
-            if (surface_texture.status ==
-                WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
-                log_warn("Sub-optimal WGPU surface texture status\n");
             }
 
             if (surface_texture.texture == NULL) {
