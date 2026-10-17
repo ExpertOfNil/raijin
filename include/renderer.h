@@ -90,6 +90,7 @@ typedef struct RendererPipelineDesc {
 
 typedef struct Renderer {
     bool enable_edges;
+    float clear_color[4];
     WGPUAdapter adapter;
     WGPUDevice device;
     WGPUQueue queue;
@@ -1381,10 +1382,10 @@ ReturnStatus Renderer_render_pass_solid(
         .loadOp = WGPULoadOp_Clear,
         .clearValue =
             (WGPUColor){
-                .r = 0.03,
-                .g = 0.03,
-                .b = 0.03,
-                .a = 1.0,
+                .r = renderer->clear_color[0],
+                .g = renderer->clear_color[1],
+                .b = renderer->clear_color[2],
+                .a = renderer->clear_color[3],
             },
         .storeOp = WGPUStoreOp_Store,
     };
@@ -1437,13 +1438,6 @@ ReturnStatus Renderer_render_pass_edges(
     WGPURenderPassColorAttachment color_attachment = {
         .view = texture_view,
         .loadOp = WGPULoadOp_Load,
-        .clearValue =
-            (WGPUColor){
-                .r = 0.03,
-                .g = 0.03,
-                .b = 0.03,
-                .a = 1.0,
-            },
         .storeOp = WGPUStoreOp_Store,
     };
     WGPURenderPassDepthStencilAttachment depth_stencil_attachment = {

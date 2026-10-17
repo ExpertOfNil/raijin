@@ -128,6 +128,10 @@ ReturnStatus Raijin_init(
     }
 
     engine->renderer.wait_config = wait_config;
+    engine->renderer.clear_color[0] = 0.03f;
+    engine->renderer.clear_color[1] = 0.03f;
+    engine->renderer.clear_color[2] = 0.03f;
+    engine->renderer.clear_color[3] = 1.0f;
 
     if (mode == RENDER_MODE_WINDOWED) {
         engine->mouse = (MouseState){

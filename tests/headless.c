@@ -28,11 +28,95 @@ int main(void) {
         goto cleanup;
     }
 
+    float clear_color[4];
+    result = raijin_context_get_clear_color(ctx, clear_color);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(stderr, "--> ERROR: Failed to get clear color\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+    if (clear_color[0] != 0.03f || clear_color[1] != 0.03f ||
+        clear_color[2] != 0.03f || clear_color[3] != 1.0f) {
+        fprintf(stderr, "--> ERROR: Invalid initial clear color\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+    clear_color[0] = 1.0f;
+    clear_color[1] = 1.0f;
+    clear_color[2] = 1.0f;
+    clear_color[3] = 1.0f;
+    result = raijin_context_set_clear_color(ctx, clear_color);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(stderr, "--> ERROR: Failed to set clear color\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+    result = raijin_context_get_clear_color(ctx, clear_color);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(stderr, "--> ERROR: failed to get clear color\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+    if (clear_color[0] != 1.0f || clear_color[1] != 1.0f ||
+        clear_color[2] != 1.0f || clear_color[3] != 1.0f) {
+        fprintf(
+            stderr,
+            "--> ERROR: Invalid clear color received. Got: [%.2f, %.2f, %.2f, "
+            "%.2f]\n",
+            clear_color[0],
+            clear_color[1],
+            clear_color[2],
+            clear_color[3]
+        );
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    // Verify public edge-visibility controls
+    uint32_t edges_visible = UINT32_MAX;
+
+    result = raijin_context_get_edge_visibility(ctx, &edges_visible);
+    if (result != RAIJIN_SUCCESS || edges_visible != 0) {
+        fprintf(stderr, "--> ERROR: Invalid initial edge visibility\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    result = raijin_context_set_edge_visibility(ctx, 2);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(stderr, "--> ERROR: Failed to enable edge visibility\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    result = raijin_context_get_edge_visibility(ctx, &edges_visible);
+    if (result != RAIJIN_SUCCESS || edges_visible != 1) {
+        fprintf(stderr, "--> ERROR: Edge visibility was not enabled\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    result = raijin_context_set_edge_visibility(ctx, 0);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(stderr, "--> ERROR: Failed to disable edge visibility\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    result = raijin_context_get_edge_visibility(ctx, &edges_visible);
+    if (result != RAIJIN_SUCCESS || edges_visible != 0) {
+        fprintf(stderr, "--> ERROR: Edge visibility was not disabled\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
     // Verify empty frame rendering and command clearing
     result = raijin_context_render(ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
-            stderr, "--> ERROR: Failed to render empty frame: %u\n", (uint32_t)result
+            stderr,
+            "--> ERROR: Failed to render empty frame: %u\n",
+            (uint32_t)result
         );
         exit_status = EXIT_FAILURE;
         goto cleanup;

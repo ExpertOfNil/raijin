@@ -1,8 +1,9 @@
 #include "../include/raijin.h"
 
+#include <math.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 
 #include "camera.h"
 #include "raijin/raijin.h"
@@ -240,6 +241,66 @@ RaijinResult raijin_context_camera_set_projection_matrix(
         ctx->engine.camera.view_matrix
     );
 
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_set_edge_visibility(
+    RaijinContext* ctx, uint32_t is_visible
+) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    ctx->engine.renderer.enable_edges = is_visible != 0;
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_get_edge_visibility(
+    const RaijinContext* ctx, uint32_t* out_is_visible
+) {
+    if (out_is_visible == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    *out_is_visible = 0;
+
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    *out_is_visible =
+        ctx->engine.renderer.enable_edges ? UINT32_C(1) : UINT32_C(0);
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_set_clear_color(
+    RaijinContext* ctx, const float linear_rgba[4]
+) {
+    if (ctx == NULL || linear_rgba == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    for (size_t i = 0; i < 4; ++i) {
+        if (!isfinite(linear_rgba[i]) || linear_rgba[i] < 0.0f ||
+            linear_rgba[i] > 1.0f) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
+
+    memcpy(
+        ctx->engine.renderer.clear_color,
+        linear_rgba,
+        sizeof(ctx->engine.renderer.clear_color)
+    );
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_context_get_clear_color(
+    const RaijinContext* ctx, float out_linear_rgba[4]
+) {
+    if (out_linear_rgba == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    memset(out_linear_rgba, 0, sizeof(float) * 4);
+
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    memcpy(
+        out_linear_rgba,
+        ctx->engine.renderer.clear_color,
+        sizeof(ctx->engine.renderer.clear_color)
+    );
     return RAIJIN_SUCCESS;
 }
 

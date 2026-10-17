@@ -94,5 +94,22 @@ int main(void) {
     PanOrbitCamera_update(&camera);
     CHECK(matrix_near(camera.view_matrix, requested_view, tolerance));
 
+    /*
+     * WebGPU uses a zero-to-one clip-space depth range.
+     */
+    CHECK(
+        fabsf(
+            camera.proj_matrix[2][2] -
+            camera.z_far / (camera.z_near - camera.z_far)
+        ) <= tolerance
+    );
+
+    CHECK(
+        fabsf(
+            camera.proj_matrix[3][2] -
+            camera.z_near * camera.z_far / (camera.z_near - camera.z_far)
+        ) <= tolerance
+    );
+
     return EXIT_SUCCESS;
 }

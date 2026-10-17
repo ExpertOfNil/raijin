@@ -81,6 +81,7 @@ add_library(raijin STATIC
 add_library(Raijin::Raijin ALIAS raijin)
 
 target_compile_features(raijin PUBLIC c_std_11)
+target_compile_definitions(raijin PRIVATE CGLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 target_include_directories(raijin
     PUBLIC

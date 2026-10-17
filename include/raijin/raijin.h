@@ -76,6 +76,18 @@ RaijinResult raijin_context_camera_set_view_matrix(
 RaijinResult raijin_context_camera_set_projection_matrix(
     RaijinContext* ctx, const float proj_matrix[16]
 );
+RaijinResult raijin_context_set_edge_visibility(
+    RaijinContext* ctx, uint32_t is_visible
+);
+RaijinResult raijin_context_get_edge_visibility(
+    const RaijinContext* ctx, uint32_t* out_is_visible
+);
+RaijinResult raijin_context_set_clear_color(
+    RaijinContext* ctx, const float linear_rgba[4]
+);
+RaijinResult raijin_context_get_clear_color(
+    const RaijinContext* ctx, float out_linear_rgba[4]
+);
 RaijinResult raijin_context_should_close(
     const RaijinContext* ctx, uint32_t* out_should_close
 );
