@@ -65,6 +65,10 @@ target_include_directories(logging
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/logging/include"
 )
+target_compile_definitions(logging
+    PRIVATE
+    _POSIX_C_SOURCE=200809L
+)
 target_link_libraries(logging
     PUBLIC
     Threads::Threads

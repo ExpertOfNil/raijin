@@ -77,8 +77,6 @@ void PanOrbitCamera_update(PanOrbitCamera* cam) {
     glm_lookat(position, cam->target, up, cam->view_matrix);
 }
 
-// TODO (mmckenna): add function for adding aspect ratio for resize
-
 void PanOrbitCamera_orbit(PanOrbitCamera* cam, vec2 mouse_delta) {
     float angle = glm_vec2_norm(mouse_delta) * cam->mouse_speed;
     if (angle < 1e-6f) return;
