@@ -64,6 +64,10 @@ fn addRaijinExe(
         .flags = C_FLAGS,
     });
     mod.addCSourceFile(.{
+        .file = b.path("src/renderer.c"),
+        .flags = C_FLAGS,
+    });
+    mod.addCSourceFile(.{
         .file = b.path("src/camera.c"),
         .flags = C_FLAGS,
     });

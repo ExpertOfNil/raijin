@@ -20,6 +20,7 @@ typedef uint32_t RaijinResult;
 #define RAIJIN_ERROR_INVALID_HANDLE ((RaijinResult)8u)
 #define RAIJIN_ERROR_TIMEOUT ((RaijinResult)9u)
 #define RAIJIN_ERROR_DEVICE_LOST ((RaijinResult)10u)
+#define RAIJIN_ERROR_MESH_CREATION ((RaijinResult)11u)
 
 typedef struct RaijinContext RaijinContext;
 
@@ -46,6 +47,32 @@ typedef struct RaijinInstance {
     /* Linear RGBA color */
     float color[4];
 } RaijinInstance;
+
+typedef struct RaijinVertex {
+    float position[3];
+    float color[3];
+    float normal[3];
+} RaijinVertex;
+
+/*
+ * All arrays are borrowed for the duration of raijin_context_create_mesh().
+ * Raijin does not retain these pointers or assume ownership of their storage.
+ *
+ * triangle_index_count must be divisible by three.
+ *
+ * Edge indices are optional. When edge_index_count is nonzero, edge_indices
+ * must be nonnull and edge_index_count must be divisible by two.
+ */
+typedef struct RaijinMeshDesc {
+    const RaijinVertex* vertices;
+    uint32_t vertex_count;
+
+    const uint32_t* triangle_indices;
+    uint32_t triangle_index_count;
+
+    const uint32_t* edge_indices;
+    uint32_t edge_index_count;
+} RaijinMeshDesc;
 
 RaijinResult raijin_context_create(
     const RaijinContextDesc* desc, RaijinContext** out
@@ -103,6 +130,11 @@ RaijinResult raijin_context_draw_cube(
 );
 RaijinResult raijin_context_get_builtin_mesh(
     const RaijinContext* ctx, RaijinBuiltinMesh builtin, RaijinMesh* mesh
+);
+RaijinResult raijin_context_create_mesh(
+    RaijinContext* ctx,
+    const RaijinMeshDesc* desc,
+    RaijinMesh* out_mesh
 );
 RaijinResult raijin_context_submit_instances(
     RaijinContext* ctx,

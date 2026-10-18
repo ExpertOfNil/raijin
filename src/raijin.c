@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,26 @@
 _Static_assert(
     sizeof(((RaijinInstance*)0)->transform) == sizeof(mat4),
     "Public and internal matrix sizes differ"
+);
+_Static_assert(
+    sizeof(RaijinVertex) == sizeof(Vertex),
+    "Public and internal vertex sizes differ"
+);
+_Static_assert(
+    _Alignof(RaijinVertex) == _Alignof(Vertex),
+    "Public and internal vertex alignments differ"
+);
+_Static_assert(
+    offsetof(RaijinVertex, position) == offsetof(Vertex, position),
+    "Public and internal position offsets differ"
+);
+_Static_assert(
+    offsetof(RaijinVertex, color) == offsetof(Vertex, color),
+    "Public and internal vertex color offsets differ"
+);
+_Static_assert(
+    offsetof(RaijinVertex, normal) == offsetof(Vertex, normal),
+    "Public and internal vertex normal offsets differ"
 );
 
 struct RaijinContext {
@@ -465,6 +486,47 @@ RaijinResult raijin_context_get_builtin_mesh(
     }
 }
 
+RaijinResult raijin_context_create_mesh(
+    RaijinContext* ctx, const RaijinMeshDesc* desc, RaijinMesh* out_mesh
+) {
+    if (out_mesh == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    *out_mesh = RAIJIN_MESH_INVALID;
+
+    if (ctx == NULL || desc == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    MeshGeometryView geometry = {
+        .vertices = (const Vertex*)desc->vertices,
+        .vertex_count = desc->vertex_count,
+        .indices = desc->triangle_indices,
+        .index_count = desc->triangle_index_count,
+        .edge_indices = desc->edge_indices,
+        .edge_index_count = desc->edge_index_count,
+    };
+
+    if (MeshGeometryView_validate(&geometry) != RETURN_SUCCESS) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    MeshHandle internal_mesh =
+        Renderer_register_mesh(&ctx->engine.renderer, &geometry);
+    if (internal_mesh == INVALID_MESH_HANDLE) {
+        return RAIJIN_ERROR_MESH_CREATION;
+    }
+
+    RaijinMesh public_mesh = raijin_mesh_from_internal(ctx, internal_mesh);
+    if (public_mesh == RAIJIN_MESH_INVALID) {
+        /*
+         * This should be unreachable because the context ID and internal
+         * handle were already validated.
+         */
+        return RAIJIN_ERROR_MESH_CREATION;
+    }
+
+    *out_mesh = public_mesh;
+    return RAIJIN_SUCCESS;
+}
+
 RaijinResult raijin_context_submit_instances(
     RaijinContext* ctx,
     RaijinMesh mesh,
@@ -481,14 +543,27 @@ RaijinResult raijin_context_submit_instances(
     if (instance_count == 0) return RAIJIN_SUCCESS;
     if (!instances) return RAIJIN_ERROR_INVALID_ARGUMENT;
 
-    DrawCommandArray* commands = &ctx->engine.renderer.draw_commands;
+    Renderer* renderer = &ctx->engine.renderer;
+    Mesh* internal = &renderer->meshes.items[internal_mesh];
+    InstanceArray* dest = &internal->submitted_instances;
+    bool activate = dest->count == 0;
 
-    if (instance_count > UINT32_MAX - commands->count) {
+    if (instance_count > UINT32_MAX - dest->count) {
         return RAIJIN_ERROR_OUT_OF_MEMORY;
     }
+    uint32_t required_count = dest->count + instance_count;
 
-    uint32_t required_count = commands->count + instance_count;
-    if (DrawCommandArray_reserve(commands, required_count) != RETURN_OK) {
+    if (activate) {
+        if (renderer->active_meshes.count == UINT32_MAX ||
+            MeshHandleArray_reserve(
+                &renderer->active_meshes,
+                (size_t)renderer->active_meshes.count + 1
+            ) != RETURN_OK) {
+            return RAIJIN_ERROR_OUT_OF_MEMORY;
+        }
+    }
+
+    if (InstanceArray_reserve(dest, required_count) != RETURN_OK) {
         return RAIJIN_ERROR_OUT_OF_MEMORY;
     }
 
@@ -507,11 +582,12 @@ RaijinResult raijin_context_submit_instances(
             sizeof(internal_instance.color)
         );
 
-        commands->items[commands->count++] = (DrawCommand){
-            .mesh_handle = internal_mesh,
-            .instance = internal_instance,
-        };
+        dest->items[dest->count++] = internal_instance;
     }
 
+    if (activate) {
+        renderer->active_meshes.items[renderer->active_meshes.count++] =
+            internal_mesh;
+    }
     return RAIJIN_SUCCESS;
 }

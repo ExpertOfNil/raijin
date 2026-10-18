@@ -58,7 +58,7 @@ fn vs_main(input: VertexInput, instance: Instance) -> VertexOutput {
 
     var output: VertexOutput;
     output.clip_position = uniforms.view_proj * model_matrix * vec4<f32>(input.position, 1.0);
-    output.color = instance.color;
+    output.color = vec4<f32>(1.0, 1.0, 1.0, 1.0);
     output.world_normal = normalize((model_matrix * vec4<f32>(input.normal, 0.0)).xyz);
     return output;
 }

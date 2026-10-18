@@ -30,7 +30,7 @@ typedef struct Raijin {
 /* Function prototypes */
 
 ReturnStatus Raijin_init(
-    Raijin*, const char* title, u32 width, u32 height, RenderMode mode
+    Raijin*, const char* title, uint32_t width, uint32_t height, RenderMode mode
 );
 void Raijin_handle_events(Raijin* engine);
 MeshHandle Raijin_register_mesh(
@@ -38,7 +38,7 @@ MeshHandle Raijin_register_mesh(
 );
 AssemblyHandle Raijin_create_assembly(Raijin* engine);
 AssemblyHandle Raijin_create_axis(
-    Raijin* engine, f32 axis_length, f32 axis_radius, bool include_origin
+    Raijin* engine, float axis_length, float axis_radius, bool include_origin
 );
 void Raijin_assembly_add_mesh(
     Raijin* engine,
@@ -57,39 +57,47 @@ void Raijin_draw_mesh(
     MeshHandle mesh_handle,
     vec3 position,
     mat3 rotation,
-    f32 scale,
+    float scale,
     vec4 color
 );
 void Raijin_draw_assembly(
     Raijin* engine,
     AssemblyHandle assy_handle,
-    float* position,
-    vec3* rotation,
-    f32 scale,
-    float* color
+    vec3 position,
+    mat3 rotation,
+    float scale,
+    vec4 color
 );
 void Raijin_draw_cube(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 );
 void Raijin_draw_sphere_uv_instance(Raijin* engine, Instance instance);
 void Raijin_draw_sphere_uv(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
+);
+void Raijin_draw_plane_instance(Raijin* engine, Instance instance);
+void Raijin_draw_plane(
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 );
 void Raijin_draw_disc_instance(Raijin* engine, Instance instance);
 void Raijin_draw_disc(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 );
 void Raijin_draw_cylinder_instance(Raijin* engine, Instance instance);
 void Raijin_draw_cylinder(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 );
 void Raijin_draw_cone_instance(Raijin* engine, Instance instance);
 void Raijin_draw_cone(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 );
 
 ReturnStatus Raijin_copy_frame_to_buffer(
-    Raijin* engine, u32 width, u32 height, u8* buffer, u64 buffer_capacity
+    Raijin* engine,
+    uint32_t width,
+    uint32_t height,
+    uint8_t* buffer,
+    uint64_t buffer_capacity
 );
 
 ReturnStatus Raijin_render(Raijin* engine);
@@ -99,7 +107,11 @@ void Raijin_destroy(Raijin* engine);
 /* Function */
 
 ReturnStatus Raijin_init(
-    Raijin* engine, const char* title, u32 width, u32 height, RenderMode mode
+    Raijin* engine,
+    const char* title,
+    uint32_t width,
+    uint32_t height,
+    RenderMode mode
 ) {
     WGPUInstanceCapabilities supported_capabilities = {0};
     WgpuWaitConfig wait_config = {0};
@@ -176,7 +188,7 @@ ReturnStatus Raijin_init(
     PanOrbitCamera_init(&engine->camera);
 
     if (width > 0 && height > 0) {
-        engine->camera.aspect = (f32)width / (f32)height;
+        engine->camera.aspect = (float)width / (float)height;
         glm_perspective_resize(
             engine->camera.aspect, engine->camera.proj_matrix
         );
@@ -213,7 +225,7 @@ void Raijin_handle_events(Raijin* engine) {
                 engine->window.width = (uint32_t)width;
                 engine->window.height = (uint32_t)height;
                 engine->window.minimized = false;
-                engine->camera.aspect = (f32)width / (f32)height;
+                engine->camera.aspect = (float)width / (float)height;
                 glm_perspective_resize(
                     engine->camera.aspect, engine->camera.proj_matrix
                 );
@@ -287,7 +299,7 @@ void Raijin_handle_events(Raijin* engine) {
 }
 
 void Raijin_destroy(Raijin* engine) {
-    for (u32 i = 0; i < engine->assemblies.count; ++i) {
+    for (uint32_t i = 0; i < engine->assemblies.count; ++i) {
         Assembly* assembly = &engine->assemblies.items[i];
         AssemblyComponentArray_free(&assembly->components);
         log_debug("Assy component %d free.\n", i);
@@ -319,12 +331,12 @@ AssemblyHandle Raijin_create_assembly(Raijin* engine) {
 }
 
 AssemblyHandle Raijin_create_axis(
-    Raijin* engine, f32 axis_length, f32 axis_radius, bool include_origin
+    Raijin* engine, float axis_length, float axis_radius, bool include_origin
 ) {
     AssemblyHandle axis_assy = Raijin_create_assembly(engine);
-    f32 cone_r = axis_radius * 1.5f;
-    f32 cone_end = axis_length + axis_length * 0.1f;
-    f32 origin_r = axis_radius * 4.0f;
+    float cone_r = axis_radius * 1.5f;
+    float cone_end = axis_length + axis_length * 0.1f;
+    float origin_r = axis_radius * 4.0f;
     if (include_origin) {
         Instance sphere_instance = {
             .color = {1.0, 0.0, 1.0, 1.0},
@@ -425,7 +437,7 @@ AssemblyHandle Raijin_create_frustum(
         {1.0f, -1.0f, 1.0f},
         // clang-format on
     };
-    for (u32 i = 0; i < 4; ++i) {
+    for (uint32_t i = 0; i < 4; ++i) {
         vec4 clip_pos = {corners[i][0], corners[i][1], corners[i][2], 1.0f};
         vec4 world_pos;
         glm_mat4_mulv(inv_proj, clip_pos, world_pos);
@@ -435,7 +447,7 @@ AssemblyHandle Raijin_create_frustum(
         glm_vec4_copy3(world_pos, corners[i]);
     }
 
-    for (u32 i = 0; i < 4; ++i) {
+    for (uint32_t i = 0; i < 4; ++i) {
         Instance line;
         Instance_from_line(
             &line, (vec3){0.0f, 0.0f, 0.0f}, corners[i], line_radius, color
@@ -445,9 +457,9 @@ AssemblyHandle Raijin_create_frustum(
         );
     }
 
-    for (u32 i = 0; i < 4; ++i) {
+    for (uint32_t i = 0; i < 4; ++i) {
         Instance line;
-        u32 next_corner = (i + 1) % 4;
+        uint32_t next_corner = (i + 1) % 4;
         Instance_from_line(
             &line, corners[i], corners[next_corner], line_radius, color
         );
@@ -477,7 +489,7 @@ ReturnStatus Raijin_render(Raijin* engine) {
     // Minimized rendering is a no-op
     if (engine->renderer.render_mode == RENDER_MODE_WINDOWED &&
         engine->window.minimized) {
-        engine->renderer.draw_commands.count = 0;
+        Renderer_clear_submissions(&engine->renderer);
         return RETURN_SUCCESS;
     }
     return Renderer_render(&engine->renderer);
@@ -486,11 +498,11 @@ ReturnStatus Raijin_render(Raijin* engine) {
 void Raijin_draw_mesh_instance(
     Raijin* engine, MeshHandle mesh_handle, Instance instance
 ) {
-    DrawCommand cmd = {
-        .mesh_handle = mesh_handle,
-        .instance = instance,
-    };
-    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+    if (engine == NULL) return;
+
+    (void)Renderer_submit_instances(
+        &engine->renderer, mesh_handle, &instance, 1
+    );
 }
 
 void Raijin_draw_mesh(
@@ -498,7 +510,7 @@ void Raijin_draw_mesh(
     MeshHandle mesh_handle,
     float* position,
     vec3* rotation,
-    f32 scale,
+    float scale,
     float* color
 ) {
     Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
@@ -513,7 +525,7 @@ void Raijin_draw_assembly_instance(
     Raijin* engine, AssemblyHandle assy_handle, Instance parent_instance
 ) {
     Assembly* assembly = &engine->assemblies.items[assy_handle];
-    for (u32 i = 0; i < assembly->components.count; ++i) {
+    for (uint32_t i = 0; i < assembly->components.count; ++i) {
         AssemblyComponent* comp = &assembly->components.items[i];
         Instance final_instance = {0};
         glm_mat4_mul(
@@ -531,10 +543,10 @@ void Raijin_draw_assembly_instance(
 void Raijin_draw_assembly(
     Raijin* engine,
     AssemblyHandle assy_handle,
-    float* position,
-    vec3* rotation,
-    f32 scale,
-    float* color
+    vec3 position,
+    mat3 rotation,
+    float scale,
+    vec4 color
 ) {
     Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
     glm_mat4_identity(instance.model_matrix);
@@ -545,15 +557,12 @@ void Raijin_draw_assembly(
 }
 
 void Raijin_draw_cube_instance(Raijin* engine, Instance instance) {
-    DrawCommand cmd = {
-        .mesh_handle = engine->renderer.builtin.cube,
-        .instance = instance,
-    };
-    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+    if (engine == NULL) return;
+    Raijin_draw_mesh_instance(engine, engine->renderer.builtin.cube, instance);
 }
 
 void Raijin_draw_cube(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 ) {
     Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
     glm_mat4_identity(instance.model_matrix);
@@ -564,15 +573,14 @@ void Raijin_draw_cube(
 }
 
 void Raijin_draw_sphere_uv_instance(Raijin* engine, Instance instance) {
-    DrawCommand cmd = {
-        .mesh_handle = engine->renderer.builtin.sphere_uv,
-        .instance = instance,
-    };
-    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+    if (engine == NULL) return;
+    Raijin_draw_mesh_instance(
+        engine, engine->renderer.builtin.sphere_uv, instance
+    );
 }
 
 void Raijin_draw_sphere_uv(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 ) {
     Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
     glm_mat4_identity(instance.model_matrix);
@@ -583,23 +591,27 @@ void Raijin_draw_sphere_uv(
 }
 
 void Raijin_draw_plane_instance(Raijin* engine, Instance instance) {
-    DrawCommand cmd = {
-        .mesh_handle = engine->renderer.builtin.plane,
-        .instance = instance,
-    };
-    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+    if (engine == NULL) return;
+    Raijin_draw_mesh_instance(engine, engine->renderer.builtin.plane, instance);
+}
+
+void Raijin_draw_plane(
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
+) {
+    if (engine == NULL) return;
+
+    Raijin_draw_mesh(
+        engine, engine->renderer.builtin.plane, position, rotation, scale, color
+    );
 }
 
 void Raijin_draw_disc_instance(Raijin* engine, Instance instance) {
-    DrawCommand cmd = {
-        .mesh_handle = engine->renderer.builtin.disc,
-        .instance = instance,
-    };
-    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+    if (engine == NULL) return;
+    Raijin_draw_mesh_instance(engine, engine->renderer.builtin.disc, instance);
 }
 
 void Raijin_draw_disc(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 ) {
     Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
     glm_mat4_identity(instance.model_matrix);
@@ -610,15 +622,14 @@ void Raijin_draw_disc(
 }
 
 void Raijin_draw_cylinder_instance(Raijin* engine, Instance instance) {
-    DrawCommand cmd = {
-        .mesh_handle = engine->renderer.builtin.cylinder,
-        .instance = instance,
-    };
-    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+    if (engine == NULL) return;
+    Raijin_draw_mesh_instance(
+        engine, engine->renderer.builtin.cylinder, instance
+    );
 }
 
 void Raijin_draw_cylinder(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 ) {
     Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
     glm_mat4_identity(instance.model_matrix);
@@ -629,15 +640,12 @@ void Raijin_draw_cylinder(
 }
 
 void Raijin_draw_cone_instance(Raijin* engine, Instance instance) {
-    DrawCommand cmd = {
-        .mesh_handle = engine->renderer.builtin.cone,
-        .instance = instance,
-    };
-    DrawCommandArray_push(&engine->renderer.draw_commands, cmd);
+    if (engine == NULL) return;
+    Raijin_draw_mesh_instance(engine, engine->renderer.builtin.cone, instance);
 }
 
 void Raijin_draw_cone(
-    Raijin* engine, vec3 position, mat3 rotation, f32 scale, vec4 color
+    Raijin* engine, vec3 position, mat3 rotation, float scale, vec4 color
 ) {
     Instance instance = {.color = {color[0], color[1], color[2], color[3]}};
     glm_mat4_identity(instance.model_matrix);
@@ -648,7 +656,11 @@ void Raijin_draw_cone(
 }
 
 ReturnStatus Raijin_copy_frame_to_buffer(
-    Raijin* engine, u32 width, u32 height, u8* buffer, u64 buffer_capacity
+    Raijin* engine,
+    uint32_t width,
+    uint32_t height,
+    uint8_t* buffer,
+    uint64_t buffer_capacity
 ) {
     return Renderer_copy_frame_to_buffer(
         &engine->renderer, width, height, buffer, buffer_capacity

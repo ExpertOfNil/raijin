@@ -206,11 +206,6 @@ void Mesh_release_gpu_buffers(Mesh* mesh) {
         mesh->edge_index_buffer = NULL;
     }
 
-    if (mesh->edge_instance_buffer != NULL) {
-        wgpuBufferRelease(mesh->edge_instance_buffer);
-        mesh->edge_instance_buffer = NULL;
-    }
-
     if (mesh->index_buffer != NULL) {
         wgpuBufferRelease(mesh->index_buffer);
         mesh->index_buffer = NULL;
@@ -227,7 +222,6 @@ void Mesh_release_gpu_buffers(Mesh* mesh) {
     }
 
     mesh->instance_capacity = 0;
-    mesh->edge_instance_capacity = 0;
     mesh->vertex_count = 0;
     mesh->index_count = 0;
     mesh->edge_index_count = 0;
@@ -243,19 +237,6 @@ ReturnStatus Mesh_realloc_instance_buffer(
         device,
         new_capacity,
         "Mesh Instance Buffer"
-    ));
-}
-
-ReturnStatus Mesh_realloc_edge_instance_buffer(
-    Mesh* mesh, const WGPUDevice device, u32 new_capacity
-) {
-    if (mesh == NULL) return RETURN_FAILURE;
-    return (mesh_grow_instance_buffer(
-        &mesh->edge_instance_buffer,
-        &mesh->edge_instance_capacity,
-        device,
-        new_capacity,
-        "Mesh Edge Instance Buffer"
     ));
 }
 

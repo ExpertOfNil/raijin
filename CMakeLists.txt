@@ -76,6 +76,7 @@ target_link_libraries(logging
 
 add_library(raijin STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/renderer.c"
     "${RAIJIN_WINDOW_BACKEND_SOURCE}"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core.c"

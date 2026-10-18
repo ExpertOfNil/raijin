@@ -13,6 +13,7 @@
 
 typedef u32 MeshHandle;
 #define INVALID_MESH_HANDLE ((MeshHandle) - 1)
+DEFINE_DYNAMIC_ARRAY(MeshHandle, MeshHandleArray)
 
 DEFINE_DYNAMIC_ARRAY(u32, IndexArray)
 
@@ -49,13 +50,13 @@ typedef struct Mesh {
     u32 index_count;
     u32 edge_index_count;
 
+    InstanceArray submitted_instances;
+
     WGPUBuffer vertex_buffer;
     WGPUBuffer index_buffer;
     WGPUBuffer instance_buffer;
     u32 instance_capacity;
     WGPUBuffer edge_index_buffer;
-    WGPUBuffer edge_instance_buffer;
-    u32 edge_instance_capacity;
 } Mesh;
 DEFINE_DYNAMIC_ARRAY(Mesh, MeshArray)
 
@@ -102,9 +103,6 @@ MeshGeometryView MeshGeometry_view(const MeshGeometry* geometry);
 ReturnStatus MeshGeometryView_validate(const MeshGeometryView* geometry);
 
 ReturnStatus Mesh_realloc_instance_buffer(
-    Mesh* mesh, const WGPUDevice device, u32 new_capacity
-);
-ReturnStatus Mesh_realloc_edge_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 );
 void Mesh_release_gpu_buffers(Mesh* mesh);
