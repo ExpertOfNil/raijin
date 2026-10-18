@@ -8,85 +8,7 @@
 #include "core.h"
 #include "logging.h"
 
-void Instance_set_position(Instance* instance, vec3 position) {
-    glm_vec3_copy(position, instance->model_matrix[3]);
-}
-
-void Instance_from_position_rotation(
-    Instance* instance, vec3 position, mat3 rotation, f32 scale, vec4 color
-) {
-    glm_mat4_identity(instance->model_matrix);
-    glm_mat4_ins3(rotation, instance->model_matrix);
-    glm_mat4_scale(instance->model_matrix, scale);
-    glm_translate(instance->model_matrix, position);
-    glm_vec4_copy(color, instance->color);
-}
-
-// Helper to create instance transform for a cylinder between two points
-void Instance_from_line(
-    Instance* instance, vec3 start, vec3 end, f32 radius, vec4 color
-) {
-    vec3 axis;
-    glm_vec3_sub(end, start, axis);
-    f32 length = glm_vec3_norm(axis);
-    glm_vec3_normalize(axis);
-
-    // Create quaternion that rotates Y-axis to align with our axis
-    vec3 up = {0.0f, 1.0f, 0.0f};
-    vec4 quat;
-    glm_quat_from_vecs(up, axis, quat);
-
-    // Convert quaternion to rotation matrix
-    mat4 rotation;
-    glm_quat_mat4(quat, rotation);
-
-    // Manually build the matrix: scale the rotation matrix, then set
-    // translation
-    glm_vec4_scale(rotation[0], radius, instance->model_matrix[0]);
-    glm_vec4_scale(rotation[1], length, instance->model_matrix[1]);
-    glm_vec4_scale(rotation[2], radius, instance->model_matrix[2]);
-    // Set translation directly in 4th column
-    instance->model_matrix[3][0] = start[0];
-    instance->model_matrix[3][1] = start[1];
-    instance->model_matrix[3][2] = start[2];
-    instance->model_matrix[3][3] = 1.0f;
-
-    glm_vec4_copy(color, instance->color);
-}
-
-void Mesh_release_gpu_buffers(Mesh* mesh) {
-    if (mesh == NULL) return;
-
-    if (mesh->edge_index_buffer != NULL) {
-        wgpuBufferRelease(mesh->edge_index_buffer);
-        mesh->edge_index_buffer = NULL;
-    }
-
-    if (mesh->edge_instance_buffer != NULL) {
-        wgpuBufferRelease(mesh->edge_instance_buffer);
-        mesh->edge_instance_buffer = NULL;
-    }
-
-    if (mesh->index_buffer != NULL) {
-        wgpuBufferRelease(mesh->index_buffer);
-        mesh->index_buffer = NULL;
-    }
-
-    if (mesh->instance_buffer != NULL) {
-        wgpuBufferRelease(mesh->instance_buffer);
-        mesh->instance_buffer = NULL;
-    }
-
-    if (mesh->vertex_buffer != NULL) {
-        wgpuBufferRelease(mesh->vertex_buffer);
-        mesh->vertex_buffer = NULL;
-    }
-
-    mesh->instance_capacity = 0;
-    mesh->edge_instance_capacity = 0;
-}
-
-static ReturnStatus Mesh_grow_instance_buffer(
+static ReturnStatus mesh_grow_instance_buffer(
     WGPUBuffer* buffer,
     u32* capacity,
     const WGPUDevice device,
@@ -145,11 +67,177 @@ static ReturnStatus Mesh_grow_instance_buffer(
     return RETURN_SUCCESS;
 }
 
+void Instance_set_position(Instance* instance, vec3 position) {
+    glm_vec3_copy(position, instance->model_matrix[3]);
+}
+
+void Instance_from_position_rotation(
+    Instance* instance, vec3 position, mat3 rotation, f32 scale, vec4 color
+) {
+    glm_mat4_identity(instance->model_matrix);
+    glm_mat4_ins3(rotation, instance->model_matrix);
+    glm_mat4_scale(instance->model_matrix, scale);
+    glm_translate(instance->model_matrix, position);
+    glm_vec4_copy(color, instance->color);
+}
+
+// Helper to create instance transform for a cylinder between two points
+void Instance_from_line(
+    Instance* instance, vec3 start, vec3 end, f32 radius, vec4 color
+) {
+    vec3 axis;
+    glm_vec3_sub(end, start, axis);
+    f32 length = glm_vec3_norm(axis);
+    glm_vec3_normalize(axis);
+
+    // Create quaternion that rotates Y-axis to align with our axis
+    vec3 up = {0.0f, 1.0f, 0.0f};
+    vec4 quat;
+    glm_quat_from_vecs(up, axis, quat);
+
+    // Convert quaternion to rotation matrix
+    mat4 rotation;
+    glm_quat_mat4(quat, rotation);
+
+    // Manually build the matrix: scale the rotation matrix, then set
+    // translation
+    glm_vec4_scale(rotation[0], radius, instance->model_matrix[0]);
+    glm_vec4_scale(rotation[1], length, instance->model_matrix[1]);
+    glm_vec4_scale(rotation[2], radius, instance->model_matrix[2]);
+    // Set translation directly in 4th column
+    instance->model_matrix[3][0] = start[0];
+    instance->model_matrix[3][1] = start[1];
+    instance->model_matrix[3][2] = start[2];
+    instance->model_matrix[3][3] = 1.0f;
+
+    glm_vec4_copy(color, instance->color);
+}
+
+MeshGeometryView MeshGeometry_view(const MeshGeometry* geometry) {
+    if (geometry == NULL) return (MeshGeometryView){0};
+
+    return (MeshGeometryView){
+        .vertices = geometry->vertices.items,
+        .vertex_count = geometry->vertices.count,
+        .indices = geometry->indices.items,
+        .index_count = geometry->indices.count,
+        .edge_indices = geometry->edge_indices.items,
+        .edge_index_count = geometry->edge_indices.count,
+    };
+}
+
+bool MeshGeometry_is_empty(const MeshGeometry* geometry) {
+    if (geometry == NULL) return false;
+
+    return geometry->vertices.items == NULL && geometry->vertices.count == 0 &&
+           geometry->vertices.capacity == 0 &&
+           geometry->indices.items == NULL && geometry->indices.count == 0 &&
+           geometry->indices.capacity == 0 &&
+           geometry->edge_indices.items == NULL &&
+           geometry->edge_indices.count == 0 &&
+           geometry->edge_indices.capacity == 0;
+}
+
+void MeshGeometry_release(MeshGeometry* geometry) {
+    if (geometry == NULL) return;
+
+    VertexArray_free(&geometry->vertices);
+    IndexArray_free(&geometry->indices);
+    IndexArray_free(&geometry->edge_indices);
+}
+
+ReturnStatus MeshGeometryView_validate(const MeshGeometryView* geometry) {
+    if (geometry == NULL) return RETURN_FAILURE;
+
+    if (geometry->vertices == NULL || geometry->vertex_count == 0) {
+        return RETURN_FAILURE;
+    }
+
+    if (geometry->indices == NULL || geometry->index_count == 0) {
+        return RETURN_FAILURE;
+    }
+
+    // The solid pipeline uses triangle-list topology
+    if (geometry->index_count % UINT32_C(3) != 0) {
+        return RETURN_FAILURE;
+    }
+
+    /*
+     * Edge geometry is optional, but nonempty input must consist of complete
+     * line-list pairs
+     */
+    if (geometry->edge_index_count > 0 && geometry->edge_indices == NULL) {
+        return RETURN_FAILURE;
+    }
+
+    if (geometry->edge_index_count % UINT32_C(2) != 0) {
+        return RETURN_FAILURE;
+    }
+
+    // wgpuQueueWriteBuffer takes a size_t byte count
+    if ((size_t)geometry->vertex_count >
+            SIZE_MAX / sizeof(*geometry->vertices) ||
+        (size_t)geometry->index_count > SIZE_MAX / sizeof(*geometry->indices) ||
+        (size_t)geometry->edge_index_count >
+            SIZE_MAX / sizeof(*geometry->edge_indices)) {
+        return RETURN_FAILURE;
+    }
+
+    for (u32 i = 0; i < geometry->index_count; ++i) {
+        if (geometry->indices[i] >= geometry->vertex_count) {
+            return RETURN_FAILURE;
+        }
+    }
+
+    for (u32 i = 0; i < geometry->edge_index_count; ++i) {
+        if (geometry->edge_indices[i] >= geometry->vertex_count) {
+            return RETURN_FAILURE;
+        }
+    }
+
+    return RETURN_SUCCESS;
+}
+
+void Mesh_release_gpu_buffers(Mesh* mesh) {
+    if (mesh == NULL) return;
+
+    if (mesh->edge_index_buffer != NULL) {
+        wgpuBufferRelease(mesh->edge_index_buffer);
+        mesh->edge_index_buffer = NULL;
+    }
+
+    if (mesh->edge_instance_buffer != NULL) {
+        wgpuBufferRelease(mesh->edge_instance_buffer);
+        mesh->edge_instance_buffer = NULL;
+    }
+
+    if (mesh->index_buffer != NULL) {
+        wgpuBufferRelease(mesh->index_buffer);
+        mesh->index_buffer = NULL;
+    }
+
+    if (mesh->instance_buffer != NULL) {
+        wgpuBufferRelease(mesh->instance_buffer);
+        mesh->instance_buffer = NULL;
+    }
+
+    if (mesh->vertex_buffer != NULL) {
+        wgpuBufferRelease(mesh->vertex_buffer);
+        mesh->vertex_buffer = NULL;
+    }
+
+    mesh->instance_capacity = 0;
+    mesh->edge_instance_capacity = 0;
+    mesh->vertex_count = 0;
+    mesh->index_count = 0;
+    mesh->edge_index_count = 0;
+}
+
 ReturnStatus Mesh_realloc_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 ) {
     if (mesh == NULL) return RETURN_FAILURE;
-    return (Mesh_grow_instance_buffer(
+    return (mesh_grow_instance_buffer(
         &mesh->instance_buffer,
         &mesh->instance_capacity,
         device,
@@ -162,7 +250,7 @@ ReturnStatus Mesh_realloc_edge_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 ) {
     if (mesh == NULL) return RETURN_FAILURE;
-    return (Mesh_grow_instance_buffer(
+    return (mesh_grow_instance_buffer(
         &mesh->edge_instance_buffer,
         &mesh->edge_instance_capacity,
         device,
@@ -171,30 +259,12 @@ ReturnStatus Mesh_realloc_edge_instance_buffer(
     ));
 }
 
-bool Mesh_cpu_arrays_are_empty(const Mesh* mesh) {
-    if (mesh == NULL) return false;
-
-    return mesh->vertices.items == NULL && mesh->vertices.count == 0 &&
-           mesh->vertices.capacity == 0 && mesh->indices.items == NULL &&
-           mesh->indices.count == 0 && mesh->indices.capacity == 0 &&
-           mesh->edge_indices.items == NULL && mesh->edge_indices.count == 0 &&
-           mesh->edge_indices.capacity == 0;
-}
-
-void Mesh_release_cpu_arrays(Mesh* mesh) {
-    if (mesh == NULL) return;
-
-    VertexArray_free(&mesh->vertices);
-    IndexArray_free(&mesh->indices);
-    IndexArray_free(&mesh->edge_indices);
-}
-
-ReturnStatus Mesh_create_cube(Mesh* mesh) {
-    if (!Mesh_cpu_arrays_are_empty(mesh)) {
+ReturnStatus MeshGeometry_create_cube(MeshGeometry* geometry) {
+    if (!MeshGeometry_is_empty(geometry)) {
         return RETURN_FAILURE;
     }
 
-    Mesh candidate = {0};
+    MeshGeometry candidate = {0};
     static const u32 n_vertices = ARRAY_COUNT(CUBE_VERTICES);
     static const u32 n_indices = ARRAY_COUNT(CUBE_INDICES);
     static const u32 n_edge_indices = ARRAY_COUNT(CUBE_EDGE_INDICES);
@@ -213,21 +283,21 @@ ReturnStatus Mesh_create_cube(Mesh* mesh) {
         goto failure;
     }
 
-    mesh->vertices = candidate.vertices;
-    mesh->indices = candidate.indices;
-    mesh->edge_indices = candidate.edge_indices;
+    geometry->vertices = candidate.vertices;
+    geometry->indices = candidate.indices;
+    geometry->edge_indices = candidate.edge_indices;
     return RETURN_SUCCESS;
 
 failure:
-    Mesh_release_cpu_arrays(&candidate);
+    MeshGeometry_release(&candidate);
     return RETURN_FAILURE;
 }
 
-ReturnStatus Mesh_create_plane(Mesh* mesh) {
-    if (!Mesh_cpu_arrays_are_empty(mesh)) {
+ReturnStatus MeshGeometry_create_plane(MeshGeometry* geometry) {
+    if (!MeshGeometry_is_empty(geometry)) {
         return RETURN_FAILURE;
     }
-    Mesh candidate = {0};
+    MeshGeometry candidate = {0};
     static const Vertex vertices[] = {
         {
             .position = {-0.5f, 0.0f, 0.5f},
@@ -283,18 +353,18 @@ ReturnStatus Mesh_create_plane(Mesh* mesh) {
         goto failure;
     }
 
-    mesh->vertices = candidate.vertices;
-    mesh->indices = candidate.indices;
-    mesh->edge_indices = candidate.edge_indices;
+    geometry->vertices = candidate.vertices;
+    geometry->indices = candidate.indices;
+    geometry->edge_indices = candidate.edge_indices;
     return RETURN_SUCCESS;
 
 failure:
-    Mesh_release_cpu_arrays(&candidate);
+    MeshGeometry_release(&candidate);
     return RETURN_FAILURE;
 }
 
-ReturnStatus Mesh_create_disc(Mesh* mesh, u32 divisions) {
-    if (!Mesh_cpu_arrays_are_empty(mesh)) return RETURN_FAILURE;
+ReturnStatus MeshGeometry_create_disc(MeshGeometry* geometry, u32 divisions) {
+    if (!MeshGeometry_is_empty(geometry)) return RETURN_FAILURE;
 
     if (divisions < 3 || divisions > UINT32_MAX / 3) {
         log_error("Invalid disc division count: %u\n", divisions);
@@ -306,7 +376,7 @@ ReturnStatus Mesh_create_disc(Mesh* mesh, u32 divisions) {
     u32 n_indices = divisions * 3;
     u32 n_edge_indices = divisions * 2;
 
-    Mesh candidate = {0};
+    MeshGeometry candidate = {0};
 
     if (VertexArray_reserve(&candidate.vertices, n_vertices) != RETURN_OK) {
         goto failure;
@@ -357,18 +427,20 @@ ReturnStatus Mesh_create_disc(Mesh* mesh, u32 divisions) {
         }
     }
 
-    mesh->vertices = candidate.vertices;
-    mesh->indices = candidate.indices;
-    mesh->edge_indices = candidate.edge_indices;
+    geometry->vertices = candidate.vertices;
+    geometry->indices = candidate.indices;
+    geometry->edge_indices = candidate.edge_indices;
     return RETURN_SUCCESS;
 
 failure:
-    Mesh_release_cpu_arrays(&candidate);
+    MeshGeometry_release(&candidate);
     return RETURN_FAILURE;
 }
 
-ReturnStatus Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
-    if (!Mesh_cpu_arrays_are_empty(mesh)) return RETURN_FAILURE;
+ReturnStatus MeshGeometry_create_sphere_uv(
+    MeshGeometry* geometry, u32 divisions
+) {
+    if (!MeshGeometry_is_empty(geometry)) return RETURN_FAILURE;
     if (divisions < 3 || divisions > UINT32_MAX / 2) {
         log_error("Invalid sphere division count: %u\n", divisions);
         return RETURN_FAILURE;
@@ -395,7 +467,7 @@ ReturnStatus Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
     uint32_t n_indices = (uint32_t)(6 * ring_vertex_count);
     uint32_t n_edge_indices = (uint32_t)(2 * edge_segment_count);
 
-    Mesh candidate = {0};
+    MeshGeometry candidate = {0};
 
     if (VertexArray_reserve(&candidate.vertices, n_vertices) != RETURN_OK) {
         goto failure;
@@ -559,18 +631,20 @@ ReturnStatus Mesh_create_sphere_uv(Mesh* mesh, u32 divisions) {
         }
     }
 
-    mesh->vertices = candidate.vertices;
-    mesh->indices = candidate.indices;
-    mesh->edge_indices = candidate.edge_indices;
+    geometry->vertices = candidate.vertices;
+    geometry->indices = candidate.indices;
+    geometry->edge_indices = candidate.edge_indices;
     return RETURN_SUCCESS;
 
 failure:
-    Mesh_release_cpu_arrays(&candidate);
+    MeshGeometry_release(&candidate);
     return RETURN_FAILURE;
 }
 
-ReturnStatus Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
-    if (!Mesh_cpu_arrays_are_empty(mesh)) return RETURN_FAILURE;
+ReturnStatus MeshGeometry_create_cylinder(
+    MeshGeometry* geometry, u32 divisions
+) {
+    if (!MeshGeometry_is_empty(geometry)) return RETURN_FAILURE;
     if (divisions < 4 || divisions > UINT32_MAX / 12) {
         log_error("Invalid cylinder division count: %u\n", divisions);
         return RETURN_FAILURE;
@@ -589,7 +663,7 @@ ReturnStatus Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
     u32 n_indices = divisions * 12;
     u32 n_edge_indices = divisions * 4 + vertical_edge_count * 2;
 
-    Mesh candidate = {0};
+    MeshGeometry candidate = {0};
     if (VertexArray_reserve(&candidate.vertices, n_vertices) != RETURN_OK) {
         goto failure;
     }
@@ -728,18 +802,18 @@ ReturnStatus Mesh_create_cylinder(Mesh* mesh, u32 divisions) {
         }
     }
 
-    mesh->vertices = candidate.vertices;
-    mesh->indices = candidate.indices;
-    mesh->edge_indices = candidate.edge_indices;
+    geometry->vertices = candidate.vertices;
+    geometry->indices = candidate.indices;
+    geometry->edge_indices = candidate.edge_indices;
     return RETURN_SUCCESS;
 
 failure:
-    Mesh_release_cpu_arrays(&candidate);
+    MeshGeometry_release(&candidate);
     return RETURN_FAILURE;
 }
 
-ReturnStatus Mesh_create_cone(Mesh* mesh, u32 divisions) {
-    if (!Mesh_cpu_arrays_are_empty(mesh)) return RETURN_FAILURE;
+ReturnStatus MeshGeometry_create_cone(MeshGeometry* geometry, u32 divisions) {
+    if (!MeshGeometry_is_empty(geometry)) return RETURN_FAILURE;
     if (divisions < 4 || divisions > UINT32_MAX / 6) {
         log_error("Invalid cone division count: %u\n", divisions);
         return RETURN_FAILURE;
@@ -760,7 +834,7 @@ ReturnStatus Mesh_create_cone(Mesh* mesh, u32 divisions) {
     // base ring + edges to tip
     u32 n_edge_indices = divisions * 2 + vertical_edge_count * 2;
 
-    Mesh candidate = {0};
+    MeshGeometry candidate = {0};
 
     if (VertexArray_reserve(&candidate.vertices, n_vertices) != RETURN_OK) {
         goto failure;
@@ -858,12 +932,12 @@ ReturnStatus Mesh_create_cone(Mesh* mesh, u32 divisions) {
         }
     }
 
-    mesh->vertices = candidate.vertices;
-    mesh->indices = candidate.indices;
-    mesh->edge_indices = candidate.edge_indices;
+    geometry->vertices = candidate.vertices;
+    geometry->indices = candidate.indices;
+    geometry->edge_indices = candidate.edge_indices;
     return RETURN_SUCCESS;
 
 failure:
-    Mesh_release_cpu_arrays(&candidate);
+    MeshGeometry_release(&candidate);
     return RETURN_FAILURE;
 }

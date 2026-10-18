@@ -14,6 +14,7 @@ int main(void) {
 
     int exit_status = EXIT_SUCCESS;
     RaijinContext* ctx = NULL;
+    RaijinContext* other_ctx = NULL;
     uint8_t* pixel_buf = NULL;
 
     // Create context
@@ -187,6 +188,61 @@ int main(void) {
 
     RaijinInstance instance;
     raijin_instance_init(&instance);
+    /*
+     * Public mesh handles must be rejected by contexts other than their
+     * original owner.
+     */
+    result = raijin_context_create(&desc, &other_ctx);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(stderr, "--> ERROR: Failed to create second context\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    result =
+        raijin_context_submit_instances(other_ctx, cube_mesh, &instance, 1);
+    if (result != RAIJIN_ERROR_INVALID_HANDLE) {
+        fprintf(stderr, "--> ERROR: Cross-context mesh was accepted\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    /*
+     * A handle from a destroyed context must not become valid in a newly
+     * created context.
+     */
+    RaijinMesh stale_mesh = RAIJIN_MESH_INVALID;
+    result = raijin_context_get_builtin_mesh(
+        other_ctx, RAIJIN_BUILTIN_MESH_CUBE, &stale_mesh
+    );
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(stderr, "--> ERROR: Failed to get second-context mesh\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    raijin_context_destroy(other_ctx);
+    other_ctx = NULL;
+
+    result = raijin_context_create(&desc, &other_ctx);
+    if (result != RAIJIN_SUCCESS) {
+        fprintf(stderr, "--> ERROR: Failed to create replacement context\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    result =
+        raijin_context_submit_instances(other_ctx, stale_mesh, &instance, 1);
+    if (result != RAIJIN_ERROR_INVALID_HANDLE) {
+        fprintf(stderr, "--> ERROR: Stale mesh handle was accepted\n");
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    raijin_context_destroy(other_ctx);
+    other_ctx = NULL;
+
+    /* Invalid arguments test */
     result = raijin_context_submit_instances(ctx, UINT64_MAX, &instance, 1);
     if (result != RAIJIN_ERROR_INVALID_HANDLE) {
         fprintf(
@@ -341,5 +397,6 @@ int main(void) {
 cleanup:
     if (pixel_buf) free(pixel_buf);
     raijin_context_destroy(ctx);
+    raijin_context_destroy(other_ctx);
     return exit_status;
 }

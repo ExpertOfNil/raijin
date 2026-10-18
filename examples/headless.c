@@ -5,7 +5,7 @@
 
 MeshHandle register_triangle(Raijin* engine) {
     // Create a custom triangle
-    Mesh triangle = {0};
+    MeshGeometry triangle = {0};
     // Add 3 vertices
     Vertex va = {
         .position = {1.0f, 0.0f, 0.0f},
@@ -47,14 +47,9 @@ MeshHandle register_triangle(Raijin* engine) {
     IndexArray_push(&triangle.edge_indices, 2);
     IndexArray_push(&triangle.edge_indices, 0);
     // Register with engine
-    MeshHandle handle = Raijin_register_mesh(engine, &triangle);
-    if (handle == INVALID_MESH_HANDLE) {
-        Mesh_release_cpu_arrays(&triangle);
-    } else {
-        triangle.vertices = (VertexArray){0};
-        triangle.indices = (IndexArray){0};
-        triangle.edge_indices = (IndexArray){0};
-    }
+    MeshGeometryView geometry = MeshGeometry_view(&triangle);
+    MeshHandle handle = Raijin_register_mesh(engine, &geometry);
+    MeshGeometry_release(&triangle);
     return handle;
 }
 

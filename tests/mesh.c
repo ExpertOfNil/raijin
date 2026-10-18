@@ -39,16 +39,16 @@ static bool vertices_are_initialized(const VertexArray* vertices) {
 }
 
 static int test_cylinder(void) {
-    Mesh mesh = {0};
+    MeshGeometry geometry = {0};
 
-    CHECK(Mesh_create_cylinder(&mesh, 16) == RETURN_SUCCESS);
-    CHECK(mesh.vertices.count == 34);
-    CHECK(mesh.indices.count == 192);
-    CHECK(mesh.edge_indices.count == 72);
+    CHECK(MeshGeometry_create_cylinder(&geometry, 16) == RETURN_SUCCESS);
+    CHECK(geometry.vertices.count == 34);
+    CHECK(geometry.indices.count == 192);
+    CHECK(geometry.edge_indices.count == 72);
 
-    CHECK(indices_are_valid(&mesh.indices, mesh.vertices.count));
-    CHECK(indices_are_valid(&mesh.edge_indices, mesh.vertices.count));
-    CHECK(vertices_are_initialized(&mesh.vertices));
+    CHECK(indices_are_valid(&geometry.indices, geometry.vertices.count));
+    CHECK(indices_are_valid(&geometry.edge_indices, geometry.vertices.count));
+    CHECK(vertices_are_initialized(&geometry.vertices));
 
     /*
      * Layout:
@@ -60,37 +60,37 @@ static int test_cylinder(void) {
      *   144..191: top-cap indices
      */
     for (uint32_t i = 0; i < 16; ++i) {
-        CHECK(mesh.indices.items[96 + i * 3] == 32);
-        CHECK(mesh.indices.items[144 + i * 3] == 33);
+        CHECK(geometry.indices.items[96 + i * 3] == 32);
+        CHECK(geometry.indices.items[144 + i * 3] == 33);
     }
 
     /*
      * A constructor must reject a nonempty destination without changing it.
      */
-    Vertex* original_vertices = mesh.vertices.items;
-    uint32_t original_vertex_count = mesh.vertices.count;
+    Vertex* original_vertices = geometry.vertices.items;
+    uint32_t original_vertex_count = geometry.vertices.count;
 
-    CHECK(Mesh_create_cone(&mesh, 16) == RETURN_FAILURE);
-    CHECK(mesh.vertices.items == original_vertices);
-    CHECK(mesh.vertices.count == original_vertex_count);
+    CHECK(MeshGeometry_create_cone(&geometry, 16) == RETURN_FAILURE);
+    CHECK(geometry.vertices.items == original_vertices);
+    CHECK(geometry.vertices.count == original_vertex_count);
 
-    Mesh_release_cpu_arrays(&mesh);
-    CHECK(Mesh_cpu_arrays_are_empty(&mesh));
+    MeshGeometry_release(&geometry);
+    CHECK(MeshGeometry_is_empty(&geometry));
 
     return EXIT_SUCCESS;
 }
 
 static int test_cone(void) {
-    Mesh mesh = {0};
+    MeshGeometry geometry = {0};
 
-    CHECK(Mesh_create_cone(&mesh, 16) == RETURN_SUCCESS);
-    CHECK(mesh.vertices.count == 18);
-    CHECK(mesh.indices.count == 96);
-    CHECK(mesh.edge_indices.count == 40);
+    CHECK(MeshGeometry_create_cone(&geometry, 16) == RETURN_SUCCESS);
+    CHECK(geometry.vertices.count == 18);
+    CHECK(geometry.indices.count == 96);
+    CHECK(geometry.edge_indices.count == 40);
 
-    CHECK(indices_are_valid(&mesh.indices, mesh.vertices.count));
-    CHECK(indices_are_valid(&mesh.edge_indices, mesh.vertices.count));
-    CHECK(vertices_are_initialized(&mesh.vertices));
+    CHECK(indices_are_valid(&geometry.indices, geometry.vertices.count));
+    CHECK(indices_are_valid(&geometry.edge_indices, geometry.vertices.count));
+    CHECK(vertices_are_initialized(&geometry.vertices));
 
     /*
      * Layout:
@@ -103,40 +103,40 @@ static int test_cone(void) {
         uint32_t side = i * 3;
         uint32_t base = 48 + i * 3;
 
-        CHECK(mesh.indices.items[side] == i);
-        CHECK(mesh.indices.items[side + 1] == 16);
-        CHECK(mesh.indices.items[side + 2] == next);
+        CHECK(geometry.indices.items[side] == i);
+        CHECK(geometry.indices.items[side + 1] == 16);
+        CHECK(geometry.indices.items[side + 2] == next);
 
-        CHECK(mesh.indices.items[base] == 17);
-        CHECK(mesh.indices.items[base + 1] == next);
-        CHECK(mesh.indices.items[base + 2] == i);
+        CHECK(geometry.indices.items[base] == 17);
+        CHECK(geometry.indices.items[base + 1] == next);
+        CHECK(geometry.indices.items[base + 2] == i);
     }
 
-    CHECK(mesh.vertices.items[17].normal[0] == 0.0f);
-    CHECK(mesh.vertices.items[17].normal[1] == -1.0f);
-    CHECK(mesh.vertices.items[17].normal[2] == 0.0f);
+    CHECK(geometry.vertices.items[17].normal[0] == 0.0f);
+    CHECK(geometry.vertices.items[17].normal[1] == -1.0f);
+    CHECK(geometry.vertices.items[17].normal[2] == 0.0f);
 
-    Mesh_release_cpu_arrays(&mesh);
-    CHECK(Mesh_cpu_arrays_are_empty(&mesh));
+    MeshGeometry_release(&geometry);
+    CHECK(MeshGeometry_is_empty(&geometry));
 
     return EXIT_SUCCESS;
 }
 
 static int test_invalid_divisions(void) {
-    Mesh mesh = {0};
+    MeshGeometry geometry = {0};
 
-    CHECK(Mesh_create_cylinder(NULL, 16) == RETURN_FAILURE);
-    CHECK(Mesh_create_cone(NULL, 16) == RETURN_FAILURE);
+    CHECK(MeshGeometry_create_cylinder(NULL, 16) == RETURN_FAILURE);
+    CHECK(MeshGeometry_create_cone(NULL, 16) == RETURN_FAILURE);
 
-    CHECK(Mesh_create_cylinder(&mesh, 0) == RETURN_FAILURE);
-    CHECK(Mesh_create_cylinder(&mesh, 3) == RETURN_FAILURE);
-    CHECK(Mesh_create_cylinder(&mesh, UINT32_MAX) == RETURN_FAILURE);
+    CHECK(MeshGeometry_create_cylinder(&geometry, 0) == RETURN_FAILURE);
+    CHECK(MeshGeometry_create_cylinder(&geometry, 3) == RETURN_FAILURE);
+    CHECK(MeshGeometry_create_cylinder(&geometry, UINT32_MAX) == RETURN_FAILURE);
 
-    CHECK(Mesh_create_cone(&mesh, 0) == RETURN_FAILURE);
-    CHECK(Mesh_create_cone(&mesh, 3) == RETURN_FAILURE);
-    CHECK(Mesh_create_cone(&mesh, UINT32_MAX) == RETURN_FAILURE);
+    CHECK(MeshGeometry_create_cone(&geometry, 0) == RETURN_FAILURE);
+    CHECK(MeshGeometry_create_cone(&geometry, 3) == RETURN_FAILURE);
+    CHECK(MeshGeometry_create_cone(&geometry, UINT32_MAX) == RETURN_FAILURE);
 
-    CHECK(Mesh_cpu_arrays_are_empty(&mesh));
+    CHECK(MeshGeometry_is_empty(&geometry));
 
     return EXIT_SUCCESS;
 }

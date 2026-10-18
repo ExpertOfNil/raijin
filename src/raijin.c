@@ -1,11 +1,13 @@
 #include "../include/raijin.h"
 
 #include <math.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "camera.h"
+#include "mesh.h"
 #include "raijin/raijin.h"
 #include "renderer.h"
 
@@ -19,18 +21,58 @@ struct RaijinContext {
     uint32_t width;
     uint32_t height;
     RaijinRenderMode render_mode;
+    uint32_t id;
 };
 
-static RaijinMesh raijin_mesh_from_internal(MeshHandle mesh) {
-    return (RaijinMesh)mesh + UINT64_C(1);
+static atomic_uint_fast64_t raijin_next_context_id =
+    ATOMIC_VAR_INIT(UINT64_C(1));
+
+static bool raijin_acquire_context_id(uint32_t* out_id) {
+    if (out_id == NULL) return false;
+
+    uint_fast64_t current =
+        atomic_load_explicit(&raijin_next_context_id, memory_order_relaxed);
+
+    for (;;) {
+        if (current == 0 || current > UINT32_MAX) return false;
+
+        if (atomic_compare_exchange_weak_explicit(
+                &raijin_next_context_id,
+                &current,
+                current + UINT64_C(1),
+                memory_order_relaxed,
+                memory_order_relaxed
+            )) {
+            *out_id = (uint32_t)current;
+            return true;
+        }
+    }
+}
+
+static RaijinMesh raijin_mesh_from_internal(
+    const RaijinContext* ctx, MeshHandle mesh
+) {
+    if (ctx == NULL || ctx->id == 0 || mesh == INVALID_MESH_HANDLE) {
+        return RAIJIN_MESH_INVALID;
+    }
+
+    uint64_t encoded_index = (uint64_t)mesh + UINT64_C(1);
+    return ((uint64_t)ctx->id << 32) | encoded_index;
 }
 
 static int raijin_mesh_to_internal(
     const RaijinContext* ctx, RaijinMesh mesh, MeshHandle* out
 ) {
-    if (!ctx || !out || mesh == RAIJIN_MESH_INVALID) return -1;
+    if (ctx == NULL || out == NULL || mesh == RAIJIN_MESH_INVALID) return -1;
 
-    uint64_t index = mesh - UINT64_C(1);
+    uint32_t context_id = (uint32_t)(mesh >> 32);
+    uint32_t encoded_index = (uint32_t)mesh;
+
+    if (context_id == 0 || context_id != ctx->id || encoded_index == 0) {
+        return -1;
+    }
+
+    uint32_t index = encoded_index - UINT32_C(1);
     if (index >= ctx->engine.renderer.meshes.count) return -1;
 
     *out = (MeshHandle)index;
@@ -64,6 +106,11 @@ RaijinResult raijin_context_create(
 
     ctx = calloc(1, sizeof(*ctx));
     if (!ctx) return RAIJIN_ERROR_OUT_OF_MEMORY;
+
+    if (!raijin_acquire_context_id(&ctx->id)) {
+        free(ctx);
+        return RAIJIN_ERROR_OUT_OF_MEMORY;
+    }
 
     RenderMode render_mode = RENDER_MODE_HEADLESS;
     switch (desc->render_mode) {
@@ -409,7 +456,9 @@ RaijinResult raijin_context_get_builtin_mesh(
 
     switch (builtin) {
         case RAIJIN_BUILTIN_MESH_CUBE:
-            *out = raijin_mesh_from_internal(ctx->engine.renderer.builtin.cube);
+            *out = raijin_mesh_from_internal(
+                ctx, ctx->engine.renderer.builtin.cube
+            );
             return RAIJIN_SUCCESS;
         default:
             return RAIJIN_ERROR_INVALID_ARGUMENT;

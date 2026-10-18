@@ -23,6 +23,21 @@ typedef struct Vertex {
 } Vertex;
 DEFINE_DYNAMIC_ARRAY(Vertex, VertexArray)
 
+typedef struct MeshGeometry {
+    VertexArray vertices;
+    IndexArray indices;
+    IndexArray edge_indices;
+} MeshGeometry;
+
+typedef struct MeshGeometryView {
+    const Vertex* vertices;
+    u32 vertex_count;
+    const u32* indices;
+    u32 index_count;
+    const u32* edge_indices;
+    u32 edge_index_count;
+} MeshGeometryView;
+
 typedef struct Instance {
     mat4 model_matrix;
     vec4 color;
@@ -30,9 +45,10 @@ typedef struct Instance {
 DEFINE_DYNAMIC_ARRAY(Instance, InstanceArray)
 
 typedef struct Mesh {
-    VertexArray vertices;
-    IndexArray indices;
-    IndexArray edge_indices;
+    u32 vertex_count;
+    u32 index_count;
+    u32 edge_index_count;
+
     WGPUBuffer vertex_buffer;
     WGPUBuffer index_buffer;
     WGPUBuffer instance_buffer;
@@ -66,24 +82,32 @@ void Instance_from_position_rotation(
 void Instance_from_line(
     Instance* instance, vec3 start, vec3 end, f32 radius, vec4 color
 );
+
+bool MeshGeometry_is_empty(const MeshGeometry* geometry);
+void MeshGeometry_release(MeshGeometry* geometry);
+// 2D Shapes
+ReturnStatus MeshGeometry_create_plane(MeshGeometry* geometry);
+ReturnStatus MeshGeometry_create_disc(MeshGeometry* geometry, u32 divisions);
+// 3D Shapes
+ReturnStatus MeshGeometry_create_cube(MeshGeometry* geometry);
+ReturnStatus MeshGeometry_create_sphere_uv(
+    MeshGeometry* geometry, u32 divisions
+);
+ReturnStatus MeshGeometry_create_cylinder(
+    MeshGeometry* geometry, u32 divisions
+);
+ReturnStatus MeshGeometry_create_cone(MeshGeometry* geometry, u32 divisions);
+
+MeshGeometryView MeshGeometry_view(const MeshGeometry* geometry);
+ReturnStatus MeshGeometryView_validate(const MeshGeometryView* geometry);
+
 ReturnStatus Mesh_realloc_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 );
 ReturnStatus Mesh_realloc_edge_instance_buffer(
     Mesh* mesh, const WGPUDevice device, u32 new_capacity
 );
-bool Mesh_cpu_arrays_are_empty(const Mesh* mesh);
-// 2D Shapes
-ReturnStatus Mesh_create_plane(Mesh* mesh);
-ReturnStatus Mesh_create_disc(Mesh* mesh, u32 divisions);
-// 3D Shapes
-ReturnStatus Mesh_create_cube(Mesh* mesh);
-ReturnStatus Mesh_create_sphere_uv(Mesh* mesh, u32 divisions);
-ReturnStatus Mesh_create_cylinder(Mesh* mesh, u32 divisions);
-ReturnStatus Mesh_create_cone(Mesh* mesh, u32 divisions);
-
 void Mesh_release_gpu_buffers(Mesh* mesh);
-void Mesh_release_cpu_arrays(Mesh* mesh);
 
 /* Static Definitions */
 

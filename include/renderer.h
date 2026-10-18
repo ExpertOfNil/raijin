@@ -134,8 +134,12 @@ typedef struct Renderer {
 
 /* Function Prototypes */
 
-ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer);
-MeshHandle Renderer_register_mesh(Renderer* renderer, Mesh* mesh_template);
+ReturnStatus Renderer_create_mesh_buffers(
+    Mesh* mesh, Renderer* renderer, const MeshGeometryView* geometry
+);
+MeshHandle Renderer_register_mesh(
+    Renderer* renderer, const MeshGeometryView* geometry
+);
 ReturnStatus Renderer_create_depth_texture(
     Renderer* renderer,
     u32 width,
@@ -224,16 +228,24 @@ void buffer_map_callback(
 
 /* Functions */
 
-ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
+ReturnStatus Renderer_create_mesh_buffers(
+    Mesh* mesh, Renderer* renderer, const MeshGeometryView* geometry
+) {
     if (mesh == NULL || renderer == NULL || renderer->device == NULL ||
         renderer->queue == NULL) {
         return RETURN_FAILURE;
     }
-    if (mesh->vertices.items == NULL || mesh->vertices.count == 0) {
+
+    if (MeshGeometryView_validate(geometry) != RETURN_SUCCESS) {
+        log_error("Invalid mesh geometry\n");
+        return RETURN_FAILURE;
+    }
+
+    if (geometry->vertices == NULL || geometry->vertex_count == 0) {
         log_error("Mesh has no vertices\n");
         return RETURN_FAILURE;
     }
-    if (mesh->indices.items == NULL || mesh->indices.count == 0) {
+    if (geometry->indices == NULL || geometry->index_count == 0) {
         log_error("Mesh has no triangle indices\n");
         return RETURN_FAILURE;
     }
@@ -241,11 +253,11 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         log_error("Mesh instance capacity is zero\n");
         return RETURN_FAILURE;
     }
-    if (mesh->edge_indices.count > 0 && mesh->edge_indices.items == NULL) {
+    if (geometry->edge_indices == NULL && geometry->edge_index_count > 0) {
         log_error("Mesh edge indices are invalid\n");
         return RETURN_FAILURE;
     }
-    if (mesh->edge_indices.count > 0 && mesh->edge_instance_capacity == 0) {
+    if (geometry->edge_index_count > 0 && mesh->edge_instance_capacity == 0) {
         log_error("Mesh edge instance capacity is zero\n");
         return RETURN_FAILURE;
     }
@@ -256,10 +268,10 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         return RETURN_FAILURE;
     }
 
-    uint64_t vertex_size = (uint64_t)mesh->vertices.count * sizeof(Vertex);
+    uint64_t vertex_size = (uint64_t)geometry->vertex_count * sizeof(Vertex);
     uint64_t instance_size =
         (uint64_t)mesh->instance_capacity * sizeof(Instance);
-    uint64_t index_size = (uint64_t)mesh->indices.count * sizeof(uint32_t);
+    uint64_t index_size = (uint64_t)geometry->index_count * sizeof(uint32_t);
 
     Mesh candidate = {0};
 
@@ -285,7 +297,7 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
 
     candidate.index_buffer = create_buffer(
         renderer->device,
-        mesh->indices.count * sizeof(u32),
+        index_size,
         WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst,
         "Index Buffer"
     );
@@ -293,11 +305,11 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         goto failure;
     }
 
-    if (mesh->edge_indices.count > 0) {
+    if (geometry->edge_index_count > 0) {
         uint64_t edge_instance_size =
             (uint64_t)mesh->edge_instance_capacity * sizeof(Instance);
         uint64_t edge_index_size =
-            (uint64_t)mesh->edge_indices.count * sizeof(uint32_t);
+            (uint64_t)geometry->edge_index_count * sizeof(uint32_t);
 
         candidate.edge_instance_buffer = create_buffer(
             renderer->device,
@@ -324,7 +336,7 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         renderer->queue,
         candidate.vertex_buffer,
         0,
-        mesh->vertices.items,
+        geometry->vertices,
         vertex_size
     );
 
@@ -332,7 +344,7 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
         renderer->queue,
         candidate.index_buffer,
         0,
-        mesh->indices.items,
+        geometry->indices,
         index_size
     );
 
@@ -341,8 +353,8 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
             renderer->queue,
             candidate.edge_index_buffer,
             0,
-            mesh->edge_indices.items,
-            (uint64_t)mesh->edge_indices.count * sizeof(uint32_t)
+            geometry->edge_indices,
+            (uint64_t)geometry->edge_index_count * sizeof(uint32_t)
         );
     }
 
@@ -352,6 +364,10 @@ ReturnStatus Renderer_create_mesh_buffers(Mesh* mesh, Renderer* renderer) {
     mesh->edge_instance_buffer = candidate.edge_instance_buffer;
     mesh->edge_index_buffer = candidate.edge_index_buffer;
 
+    mesh->vertex_count = geometry->vertex_count;
+    mesh->index_count = geometry->index_count;
+    mesh->edge_index_count = geometry->edge_index_count;
+
     return RETURN_SUCCESS;
 
 failure:
@@ -359,26 +375,26 @@ failure:
     return RETURN_FAILURE;
 }
 
-MeshHandle Renderer_register_mesh(Renderer* renderer, Mesh* mesh_template) {
-    if (renderer == NULL || mesh_template == NULL) return INVALID_MESH_HANDLE;
+MeshHandle Renderer_register_mesh(
+    Renderer* renderer, const MeshGeometryView* geometry
+) {
+    if (renderer == NULL || geometry == NULL) return INVALID_MESH_HANDLE;
     if (renderer->meshes.count == UINT32_MAX) {
         log_error("Mesh handle capacity exhausted\n");
         return INVALID_MESH_HANDLE;
     }
 
     size_t required_count = (size_t)renderer->meshes.count + 1;
-    if (MeshArray_reserve(&renderer->meshes, required_count)) {
+    if (MeshArray_reserve(&renderer->meshes, required_count) != RETURN_OK) {
         return INVALID_MESH_HANDLE;
     }
     Mesh mesh = {
-        .vertices = mesh_template->vertices,
-        .indices = mesh_template->indices,
-        .edge_indices = mesh_template->edge_indices,
         .instance_capacity = DEFAULT_INSTANCE_CAPACITY,
         .edge_instance_capacity = DEFAULT_INSTANCE_CAPACITY,
     };
 
-    if (Renderer_create_mesh_buffers(&mesh, renderer) != RETURN_SUCCESS) {
+    if (Renderer_create_mesh_buffers(&mesh, renderer, geometry) !=
+        RETURN_SUCCESS) {
         return INVALID_MESH_HANDLE;
     }
     if (MeshArray_push(&renderer->meshes, mesh) != RETURN_OK) {
@@ -397,7 +413,7 @@ static ReturnStatus Renderer_register_builtin_meshes(Renderer* renderer) {
     // TODO (mmckenna): missing TRIANGLE
     // TODO (mmckenna): missing TETRAHEDRON
 
-    Mesh candidates[BUILTIN_COUNT] = {0};
+    MeshGeometry candidates[BUILTIN_COUNT] = {0};
     MeshHandle handles[BUILTIN_COUNT] = {0};
     for (uint32_t i = 0; i < BUILTIN_COUNT; ++i) {
         handles[i] = INVALID_MESH_HANDLE;
@@ -413,34 +429,38 @@ static ReturnStatus Renderer_register_builtin_meshes(Renderer* renderer) {
     if (MeshArray_reserve(&renderer->meshes, BUILTIN_COUNT) != RETURN_OK) {
         goto failure;
     }
-    if (Mesh_create_plane(&candidates[BUILTIN_PLANE]) != RETURN_SUCCESS) {
-        goto failure;
-    }
-    if (Mesh_create_disc(&candidates[BUILTIN_DISC], 32) != RETURN_SUCCESS) {
-        goto failure;
-    }
-    if (Mesh_create_cube(&candidates[BUILTIN_CUBE]) != RETURN_SUCCESS) {
-        goto failure;
-    }
-    if (Mesh_create_cylinder(&candidates[BUILTIN_CYLINDER], 16) !=
+    if (MeshGeometry_create_plane(&candidates[BUILTIN_PLANE]) !=
         RETURN_SUCCESS) {
         goto failure;
     }
-    if (Mesh_create_cone(&candidates[BUILTIN_CONE], 16) != RETURN_SUCCESS) {
+    if (MeshGeometry_create_disc(&candidates[BUILTIN_DISC], 32) !=
+        RETURN_SUCCESS) {
         goto failure;
     }
-    if (Mesh_create_sphere_uv(&candidates[BUILTIN_SPHERE_UV], 16) !=
+    if (MeshGeometry_create_cube(&candidates[BUILTIN_CUBE]) != RETURN_SUCCESS) {
+        goto failure;
+    }
+    if (MeshGeometry_create_cylinder(&candidates[BUILTIN_CYLINDER], 16) !=
+        RETURN_SUCCESS) {
+        goto failure;
+    }
+    if (MeshGeometry_create_cone(&candidates[BUILTIN_CONE], 16) !=
+        RETURN_SUCCESS) {
+        goto failure;
+    }
+    if (MeshGeometry_create_sphere_uv(&candidates[BUILTIN_SPHERE_UV], 16) !=
         RETURN_SUCCESS) {
         goto failure;
     }
 
     for (uint32_t i = 0; i < BUILTIN_COUNT; ++i) {
-        MeshHandle handle = Renderer_register_mesh(renderer, &candidates[i]);
+        MeshGeometryView geometry = MeshGeometry_view(&candidates[i]);
+        MeshHandle handle = Renderer_register_mesh(renderer, &geometry);
+        // Registration borrows.  Release regardless of success.
+        MeshGeometry_release(&candidates[i]);
         if (handle == INVALID_MESH_HANDLE) {
             goto failure;
         }
-        // Shallow-transferred to renderer.  Clear local copy.
-        candidates[i] = (Mesh){0};
 
         if (handle != i) goto failure;
         handles[i] = handle;
@@ -457,7 +477,7 @@ static ReturnStatus Renderer_register_builtin_meshes(Renderer* renderer) {
 
 failure:
     for (uint32_t i = 0; i < BUILTIN_COUNT; ++i) {
-        Mesh_release_cpu_arrays(&candidates[i]);
+        MeshGeometry_release(&candidates[i]);
     }
 
     while (renderer->meshes.count > 0) {
@@ -465,7 +485,6 @@ failure:
         Mesh* mesh = &renderer->meshes.items[index];
 
         Mesh_release_gpu_buffers(mesh);
-        Mesh_release_cpu_arrays(mesh);
         *mesh = (Mesh){0};
         renderer->meshes.count = index;
     }
@@ -1267,7 +1286,7 @@ ReturnStatus Renderer_render_mesh(
         0,
         mesh->vertex_buffer,
         0,
-        mesh->vertices.count * sizeof(Vertex)
+        (uint64_t)mesh->vertex_count * sizeof(Vertex)
     );
     wgpuRenderPassEncoderSetVertexBuffer(
         render_pass_encoder,
@@ -1281,10 +1300,10 @@ ReturnStatus Renderer_render_mesh(
         mesh->index_buffer,
         WGPUIndexFormat_Uint32,
         0,
-        mesh->indices.count * sizeof(u32)
+        (uint64_t)mesh->index_count * sizeof(u32)
     );
     wgpuRenderPassEncoderDrawIndexed(
-        render_pass_encoder, mesh->indices.count, instances.count, 0, 0, 0
+        render_pass_encoder, mesh->index_count, instances.count, 0, 0, 0
     );
 
 cleanup:
@@ -1304,7 +1323,7 @@ ReturnStatus Renderer_render_mesh_edges(
 
     Mesh* mesh = &renderer->meshes.items[mesh_handle];
     // Allow mesh generation without creating optional edge buffers
-    if (mesh->edge_indices.count == 0) {
+    if (mesh->edge_index_count == 0) {
         goto cleanup;
     }
 
@@ -1323,7 +1342,7 @@ ReturnStatus Renderer_render_mesh_edges(
     }
 
     // No instances to render
-    if (instances.count == 0) {
+    if (instances.count == 0 || mesh->edge_index_count == 0) {
         goto cleanup;
     }
     if (instances.count > mesh->edge_instance_capacity) {
@@ -1347,7 +1366,7 @@ ReturnStatus Renderer_render_mesh_edges(
         0,
         mesh->vertex_buffer,
         0,
-        mesh->vertices.count * sizeof(Vertex)
+        (uint64_t)mesh->vertex_count * sizeof(Vertex)
     );
     wgpuRenderPassEncoderSetVertexBuffer(
         render_pass_encoder,
@@ -1361,10 +1380,10 @@ ReturnStatus Renderer_render_mesh_edges(
         mesh->edge_index_buffer,
         WGPUIndexFormat_Uint32,
         0,
-        mesh->edge_indices.count * sizeof(u32)
+        (uint64_t)mesh->edge_index_count * sizeof(u32)
     );
     wgpuRenderPassEncoderDrawIndexed(
-        render_pass_encoder, mesh->edge_indices.count, instances.count, 0, 0, 0
+        render_pass_encoder, mesh->edge_index_count, instances.count, 0, 0, 0
     );
 
 cleanup:
@@ -1701,7 +1720,6 @@ void Renderer_destroy(Renderer* renderer) {
     for (u32 i = 0; i < renderer->meshes.count; ++i) {
         Mesh* mesh = &renderer->meshes.items[i];
         Mesh_release_gpu_buffers(mesh);
-        Mesh_release_cpu_arrays(mesh);
         log_debug("Mesh %d free.\n", i);
     }
     MeshArray_free(&renderer->meshes);

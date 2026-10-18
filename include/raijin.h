@@ -33,7 +33,9 @@ ReturnStatus Raijin_init(
     Raijin*, const char* title, u32 width, u32 height, RenderMode mode
 );
 void Raijin_handle_events(Raijin* engine);
-MeshHandle Raijin_register_mesh(Raijin* engine, Mesh* mesh);
+MeshHandle Raijin_register_mesh(
+    Raijin* engine, const MeshGeometryView* geometry
+);
 AssemblyHandle Raijin_create_assembly(Raijin* engine);
 AssemblyHandle Raijin_create_axis(
     Raijin* engine, f32 axis_length, f32 axis_radius, bool include_origin
@@ -302,8 +304,11 @@ void Raijin_destroy(Raijin* engine) {
 }
 // #endif
 
-MeshHandle Raijin_register_mesh(Raijin* engine, Mesh* mesh) {
-    return Renderer_register_mesh(&engine->renderer, mesh);
+MeshHandle Raijin_register_mesh(
+    Raijin* engine, const MeshGeometryView* geometry
+) {
+    if (engine == NULL || geometry == NULL) return INVALID_MESH_HANDLE;
+    return Renderer_register_mesh(&engine->renderer, geometry);
 }
 
 AssemblyHandle Raijin_create_assembly(Raijin* engine) {
