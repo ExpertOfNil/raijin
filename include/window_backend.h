@@ -73,15 +73,15 @@ typedef struct {
 bool RaijinWindow_init(
     RaijinWindow* window, const char* title, uint32_t width, uint32_t height
 );
-
 bool RaijinWindow_poll_event(
     RaijinWindow* window, RaijinWindowEvent* out_event
 );
-
 WGPUSurface RaijinWindow_create_surface(
     RaijinWindow* window, WGPUInstance instance
 );
-
+bool RaijinWindow_get_pixel_size(
+    const RaijinWindow* window, uint32_t* out_width, uint32_t* out_height
+);
 void RaijinWindow_destroy(RaijinWindow* window);
 
 #endif /* RAIJIN_WINDOW_BACKEND_H */

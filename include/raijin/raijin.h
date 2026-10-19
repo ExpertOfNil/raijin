@@ -33,6 +33,11 @@ typedef uint64_t RaijinMesh;
 
 typedef uint32_t RaijinBuiltinMesh;
 #define RAIJIN_BUILTIN_MESH_CUBE ((RaijinBuiltinMesh)1u)
+#define RAIJIN_BUILTIN_MESH_PLANE ((RaijinBuiltinMesh)2u)
+#define RAIJIN_BUILTIN_MESH_DISC ((RaijinBuiltinMesh)3u)
+#define RAIJIN_BUILTIN_MESH_CYLINDER ((RaijinBuiltinMesh)4u)
+#define RAIJIN_BUILTIN_MESH_CONE ((RaijinBuiltinMesh)5u)
+#define RAIJIN_BUILTIN_MESH_SPHERE_UV ((RaijinBuiltinMesh)6u)
 
 typedef struct RaijinContextDesc {
     const char* title;
@@ -55,7 +60,7 @@ typedef struct RaijinVertex {
 } RaijinVertex;
 
 /*
- * All arrays are borrowed for the duration of raijin_context_create_mesh().
+ * All arrays are borrowed for the duration of raijin_create_mesh().
  * Raijin does not retain these pointers or assume ownership of their storage.
  *
  * triangle_index_count must be divisible by three.
@@ -74,77 +79,134 @@ typedef struct RaijinMeshDesc {
     uint32_t edge_index_count;
 } RaijinMeshDesc;
 
-RaijinResult raijin_context_create(
-    const RaijinContextDesc* desc, RaijinContext** out
-);
-RaijinResult raijin_context_poll_events(RaijinContext* ctx);
-RaijinResult raijin_context_get_viewport_size(
+RaijinResult raijin_create(const RaijinContextDesc* desc, RaijinContext** out);
+RaijinResult raijin_poll_events(RaijinContext* ctx);
+RaijinResult raijin_get_viewport_size(
     const RaijinContext* ctx, uint32_t* out_width, uint32_t* out_height
 );
-RaijinResult raijin_context_is_minimized(
+RaijinResult raijin_is_minimized(
     const RaijinContext* ctx, uint32_t* out_is_minimized
 );
-RaijinResult raijin_context_camera_look_to(
+RaijinResult raijin_camera_look_to(
     RaijinContext* ctx,
     const float eye[3],
     const float direction[3],
     const float up[3],
     float orbit_distance
 );
-RaijinResult raijin_context_camera_look_at(
+RaijinResult raijin_camera_look_at(
     RaijinContext* ctx,
     const float eye[3],
     const float target[3],
     const float up[3]
 );
-RaijinResult raijin_context_camera_set_view_matrix(
+RaijinResult raijin_camera_set_view_matrix(
     RaijinContext* ctx, const float view_matrix[16]
 );
-RaijinResult raijin_context_camera_set_projection_matrix(
+RaijinResult raijin_camera_set_projection_matrix(
     RaijinContext* ctx, const float proj_matrix[16]
 );
-RaijinResult raijin_context_set_edge_visibility(
+RaijinResult raijin_set_edge_visibility(
     RaijinContext* ctx, uint32_t is_visible
 );
-RaijinResult raijin_context_get_edge_visibility(
+RaijinResult raijin_get_edge_visibility(
     const RaijinContext* ctx, uint32_t* out_is_visible
 );
-RaijinResult raijin_context_set_clear_color(
+RaijinResult raijin_set_clear_color(
     RaijinContext* ctx, const float linear_rgba[4]
 );
-RaijinResult raijin_context_get_clear_color(
+RaijinResult raijin_get_clear_color(
     const RaijinContext* ctx, float out_linear_rgba[4]
 );
-RaijinResult raijin_context_should_close(
+RaijinResult raijin_should_close(
     const RaijinContext* ctx, uint32_t* out_should_close
 );
-RaijinResult raijin_context_render(RaijinContext* ctx);
-RaijinResult raijin_context_readback_size(
+RaijinResult raijin_render(RaijinContext* ctx);
+RaijinResult raijin_readback_size(
     const RaijinContext* ctx, uint64_t* out_size_bytes
 );
-RaijinResult raijin_context_read_rgba8(
+RaijinResult raijin_read_rgba8(
     RaijinContext* ctx, uint8_t* pixel_buf, uint64_t pixel_capacity
 );
-RaijinResult raijin_context_draw_cube(
-    RaijinContext* ctx, const RaijinInstance* instance
+RaijinResult raijin_draw_mesh(
+    RaijinContext* ctx,
+    RaijinMesh mesh,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
 );
-RaijinResult raijin_context_get_builtin_mesh(
+RaijinResult raijin_draw_cube(
+    RaijinContext* ctx,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
+);
+RaijinResult raijin_draw_plane(
+    RaijinContext* ctx,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
+);
+RaijinResult raijin_draw_disc(
+    RaijinContext* ctx,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
+);
+RaijinResult raijin_draw_cylinder(
+    RaijinContext* ctx,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
+);
+RaijinResult raijin_draw_cone(
+    RaijinContext* ctx,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
+);
+RaijinResult raijin_draw_sphere_uv(
+    RaijinContext* ctx,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
+);
+RaijinResult raijin_draw_line(
+    RaijinContext* ctx,
+    const float start[3],
+    const float end[3],
+    float radius,
+    const float color[4]
+);
+RaijinResult raijin_mesh_get_builtin(
     const RaijinContext* ctx, RaijinBuiltinMesh builtin, RaijinMesh* mesh
 );
-RaijinResult raijin_context_create_mesh(
-    RaijinContext* ctx,
-    const RaijinMeshDesc* desc,
-    RaijinMesh* out_mesh
+RaijinResult raijin_mesh_create(
+    RaijinContext* ctx, const RaijinMeshDesc* desc, RaijinMesh* out_mesh
 );
-RaijinResult raijin_context_submit_instances(
+RaijinResult raijin_submit_instances(
     RaijinContext* ctx,
     RaijinMesh mesh,
     const RaijinInstance* instances,
     uint32_t instance_count
 );
-void raijin_context_destroy(RaijinContext* ctx);
+void raijin_destroy(RaijinContext* ctx);
 
 void raijin_instance_init(RaijinInstance* instance);
+RaijinResult raijin_instance_init_trs(
+    RaijinInstance* instance,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
+);
 
 #ifdef __cplusplus
 }

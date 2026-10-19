@@ -116,9 +116,7 @@ static RaijinResult raijin_result_from_status(
     }
 }
 
-RaijinResult raijin_context_create(
-    const RaijinContextDesc* desc, RaijinContext** out
-) {
+RaijinResult raijin_create(const RaijinContextDesc* desc, RaijinContext** out) {
     RaijinContext* ctx;
     if (!out) return RAIJIN_ERROR_INVALID_ARGUMENT;
     *out = NULL;
@@ -157,24 +155,35 @@ RaijinResult raijin_context_create(
         free(ctx);
         return raijin_result_from_status(result, RAIJIN_ERROR_INITIALIZATION);
     }
-    ctx->height = desc->height;
-    ctx->width = desc->width;
+
+    if (desc->render_mode == RAIJIN_RENDER_MODE_WINDOWED) {
+        ctx->width = ctx->engine.window.width;
+        ctx->height = ctx->engine.window.height;
+    } else {
+        ctx->width = desc->width;
+        ctx->height = desc->height;
+    }
     ctx->render_mode = desc->render_mode;
 
     *out = ctx;
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_render(RaijinContext* ctx) {
-    if (!ctx) {
+RaijinResult raijin_render(RaijinContext* ctx) {
+    if (ctx == NULL) {
         return RAIJIN_ERROR_INVALID_ARGUMENT;
     }
 
     ReturnStatus status = Raijin_render(&ctx->engine);
+    if (ctx->render_mode == RAIJIN_RENDER_MODE_WINDOWED) {
+        ctx->width = ctx->engine.window.width;
+        ctx->height = ctx->engine.window.height;
+    }
+
     return raijin_result_from_status(status, RAIJIN_ERROR_RENDER);
 }
 
-RaijinResult raijin_context_poll_events(RaijinContext* ctx) {
+RaijinResult raijin_poll_events(RaijinContext* ctx) {
     if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
     if (ctx->render_mode != RAIJIN_RENDER_MODE_WINDOWED) {
         return RAIJIN_ERROR_INVALID_STATE;
@@ -188,7 +197,7 @@ RaijinResult raijin_context_poll_events(RaijinContext* ctx) {
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_get_viewport_size(
+RaijinResult raijin_get_viewport_size(
     const RaijinContext* ctx, uint32_t* out_width, uint32_t* out_height
 ) {
     // Headless contexts return fixed render dimensions
@@ -204,7 +213,7 @@ RaijinResult raijin_context_get_viewport_size(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_is_minimized(
+RaijinResult raijin_is_minimized(
     const RaijinContext* ctx, uint32_t* out_is_minimized
 ) {
     if (out_is_minimized == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
@@ -220,7 +229,7 @@ RaijinResult raijin_context_is_minimized(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_camera_look_to(
+RaijinResult raijin_camera_look_to(
     RaijinContext* ctx,
     const float* eye,
     const float* direction,
@@ -246,7 +255,7 @@ RaijinResult raijin_context_camera_look_to(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_camera_set_view_matrix(
+RaijinResult raijin_camera_set_view_matrix(
     RaijinContext* ctx, const float view_matrix[16]
 ) {
     if (ctx == NULL || view_matrix == NULL) {
@@ -266,7 +275,7 @@ RaijinResult raijin_context_camera_set_view_matrix(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_camera_look_at(
+RaijinResult raijin_camera_look_at(
     RaijinContext* ctx, const float* eye, const float* target, const float* up
 ) {
     if (ctx == NULL || eye == NULL || target == NULL || up == NULL) {
@@ -286,7 +295,7 @@ RaijinResult raijin_context_camera_look_at(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_camera_set_projection_matrix(
+RaijinResult raijin_camera_set_projection_matrix(
     RaijinContext* ctx, const float* proj_matrix
 ) {
     if (ctx == NULL || proj_matrix == NULL) {
@@ -312,7 +321,7 @@ RaijinResult raijin_context_camera_set_projection_matrix(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_set_edge_visibility(
+RaijinResult raijin_set_edge_visibility(
     RaijinContext* ctx, uint32_t is_visible
 ) {
     if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
@@ -321,7 +330,7 @@ RaijinResult raijin_context_set_edge_visibility(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_get_edge_visibility(
+RaijinResult raijin_get_edge_visibility(
     const RaijinContext* ctx, uint32_t* out_is_visible
 ) {
     if (out_is_visible == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
@@ -334,7 +343,7 @@ RaijinResult raijin_context_get_edge_visibility(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_set_clear_color(
+RaijinResult raijin_set_clear_color(
     RaijinContext* ctx, const float linear_rgba[4]
 ) {
     if (ctx == NULL || linear_rgba == NULL) {
@@ -356,7 +365,7 @@ RaijinResult raijin_context_set_clear_color(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_get_clear_color(
+RaijinResult raijin_get_clear_color(
     const RaijinContext* ctx, float out_linear_rgba[4]
 ) {
     if (out_linear_rgba == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
@@ -372,7 +381,7 @@ RaijinResult raijin_context_get_clear_color(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_should_close(
+RaijinResult raijin_should_close(
     const RaijinContext* ctx, uint32_t* out_should_close
 ) {
     if (out_should_close == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
@@ -388,7 +397,7 @@ RaijinResult raijin_context_should_close(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_readback_size(
+RaijinResult raijin_readback_size(
     const RaijinContext* ctx, uint64_t* out_size_bytes
 ) {
     if (!out_size_bytes) return RAIJIN_ERROR_INVALID_ARGUMENT;
@@ -405,14 +414,14 @@ RaijinResult raijin_context_readback_size(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_read_rgba8(
+RaijinResult raijin_read_rgba8(
     RaijinContext* ctx, uint8_t* pixel_buf, uint64_t pixel_capacity
 ) {
     uint64_t required_capacity;
 
     if (!ctx || !pixel_buf) return RAIJIN_ERROR_INVALID_ARGUMENT;
 
-    RaijinResult result = raijin_context_readback_size(ctx, &required_capacity);
+    RaijinResult result = raijin_readback_size(ctx, &required_capacity);
     if (result != RAIJIN_SUCCESS) return result;
 
     if (pixel_capacity < required_capacity)
@@ -430,29 +439,217 @@ RaijinResult raijin_context_read_rgba8(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_draw_cube(
-    RaijinContext* ctx, const RaijinInstance* instance
+RaijinResult raijin_draw_mesh(
+    RaijinContext* ctx,
+    RaijinMesh mesh,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
 ) {
-    if (!ctx || !instance) return RAIJIN_ERROR_INVALID_ARGUMENT;
-
-    RaijinMesh cube;
+    RaijinInstance instance;
     RaijinResult result =
-        raijin_context_get_builtin_mesh(ctx, RAIJIN_BUILTIN_MESH_CUBE, &cube);
+        raijin_instance_init_trs(&instance, position, rotation, scale, color);
+    if (result != RAIJIN_SUCCESS) return result;
+
+    return raijin_submit_instances(ctx, mesh, &instance, 1);
+}
+
+RaijinResult raijin_draw_cube(
+    RaijinContext* ctx,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
+) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    RaijinMesh mesh = RAIJIN_MESH_INVALID;
+    RaijinResult result =
+        raijin_mesh_get_builtin(ctx, RAIJIN_BUILTIN_MESH_CUBE, &mesh);
     if (result != RAIJIN_SUCCESS) {
         return result;
     }
 
-    return raijin_context_submit_instances(ctx, cube, instance, 1);
+    return raijin_draw_mesh(ctx, mesh, position, rotation, scale, color);
 }
 
-void raijin_context_destroy(RaijinContext* ctx) {
+RaijinResult raijin_draw_plane(
+    RaijinContext* ctx,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
+) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    RaijinMesh mesh = RAIJIN_MESH_INVALID;
+    RaijinResult result =
+        raijin_mesh_get_builtin(ctx, RAIJIN_BUILTIN_MESH_PLANE, &mesh);
+    if (result != RAIJIN_SUCCESS) {
+        return result;
+    }
+
+    return raijin_draw_mesh(ctx, mesh, position, rotation, scale, color);
+}
+
+RaijinResult raijin_draw_disc(
+    RaijinContext* ctx,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
+) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    RaijinMesh mesh = RAIJIN_MESH_INVALID;
+    RaijinResult result =
+        raijin_mesh_get_builtin(ctx, RAIJIN_BUILTIN_MESH_DISC, &mesh);
+    if (result != RAIJIN_SUCCESS) {
+        return result;
+    }
+
+    return raijin_draw_mesh(ctx, mesh, position, rotation, scale, color);
+}
+
+RaijinResult raijin_draw_cylinder(
+    RaijinContext* ctx,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
+) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    RaijinMesh mesh = RAIJIN_MESH_INVALID;
+    RaijinResult result =
+        raijin_mesh_get_builtin(ctx, RAIJIN_BUILTIN_MESH_CYLINDER, &mesh);
+    if (result != RAIJIN_SUCCESS) {
+        return result;
+    }
+
+    return raijin_draw_mesh(ctx, mesh, position, rotation, scale, color);
+}
+
+RaijinResult raijin_draw_cone(
+    RaijinContext* ctx,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
+) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    RaijinMesh mesh = RAIJIN_MESH_INVALID;
+    RaijinResult result =
+        raijin_mesh_get_builtin(ctx, RAIJIN_BUILTIN_MESH_CONE, &mesh);
+    if (result != RAIJIN_SUCCESS) {
+        return result;
+    }
+
+    return raijin_draw_mesh(ctx, mesh, position, rotation, scale, color);
+}
+
+RaijinResult raijin_draw_sphere_uv(
+    RaijinContext* ctx,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
+) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    RaijinMesh mesh = RAIJIN_MESH_INVALID;
+    RaijinResult result =
+        raijin_mesh_get_builtin(ctx, RAIJIN_BUILTIN_MESH_SPHERE_UV, &mesh);
+    if (result != RAIJIN_SUCCESS) {
+        return result;
+    }
+
+    return raijin_draw_mesh(ctx, mesh, position, rotation, scale, color);
+}
+
+RaijinResult raijin_draw_line(
+    RaijinContext* ctx,
+    const float start[3],
+    const float end[3],
+    float radius,
+    const float color[4]
+) {
+    if (ctx == NULL || start == NULL || end == NULL || color == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!isfinite(radius) || radius <= 0.0f) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+    for (size_t i = 0; i < 3; ++i) {
+        if (!isfinite(start[i]) || !isfinite(end[i])) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
+    for (size_t i = 0; i < 4; ++i) {
+        if (!isfinite(color[i])) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
+
+    float dx = end[0] - start[0];
+    float dy = end[1] - start[1];
+    float dz = end[2] - start[2];
+    float length_squared = dx * dx + dy * dy + dz * dz;
+
+    if (!isfinite(length_squared) || length_squared <= 0.0f) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    vec3 internal_start = {
+        start[0],
+        start[1],
+        start[2],
+    };
+    vec3 internal_end = {
+        end[0],
+        end[1],
+        end[2],
+    };
+    vec4 internal_color = {
+        color[0],
+        color[1],
+        color[2],
+        color[3],
+    };
+
+    Instance internal_instance = {0};
+    Instance_from_line(
+        &internal_instance, internal_start, internal_end, radius, internal_color
+    );
+    RaijinInstance instance = {0};
+    memcpy(
+        instance.transform,
+        internal_instance.model_matrix,
+        sizeof(instance.transform)
+    );
+    memcpy(instance.color, internal_instance.color, sizeof(instance.color));
+
+    RaijinMesh cylinder = RAIJIN_MESH_INVALID;
+    RaijinResult result =
+        raijin_mesh_get_builtin(ctx, RAIJIN_BUILTIN_MESH_CYLINDER, &cylinder);
+    if (result != RAIJIN_SUCCESS) {
+        return result;
+    }
+
+    return raijin_submit_instances(ctx, cylinder, &instance, 1);
+}
+
+void raijin_destroy(RaijinContext* ctx) {
     if (ctx == NULL) return;
     Raijin_destroy(&ctx->engine);
     free(ctx);
 }
 
 void raijin_instance_init(RaijinInstance* instance) {
-    if (!instance) return;
+    if (instance == NULL) return;
 
     *instance = (RaijinInstance){0};
     instance->transform[0] = 1.0f;
@@ -466,7 +663,80 @@ void raijin_instance_init(RaijinInstance* instance) {
     instance->color[3] = 1.0f;
 }
 
-RaijinResult raijin_context_get_builtin_mesh(
+RaijinResult raijin_instance_init_trs(
+    RaijinInstance* instance,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
+) {
+    if (instance == NULL || position == NULL || rotation == NULL ||
+        color == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!isfinite(scale) || scale <= 0.0f) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    for (size_t i = 0; i < 3; ++i) {
+        if (!isfinite(position[i])) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
+
+    for (size_t i = 0; i < 9; ++i) {
+        if (!isfinite(rotation[i])) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
+
+    for (size_t i = 0; i < 4; ++i) {
+        if (!isfinite(color[i])) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
+
+    *instance = (RaijinInstance){0};
+
+    /*
+     * First rotation column, uniformly scaled.
+     */
+    instance->transform[0] = rotation[0] * scale;
+    instance->transform[1] = rotation[1] * scale;
+    instance->transform[2] = rotation[2] * scale;
+
+    /*
+     * Second rotation column, uniformly scaled.
+     */
+    instance->transform[4] = rotation[3] * scale;
+    instance->transform[5] = rotation[4] * scale;
+    instance->transform[6] = rotation[5] * scale;
+
+    /*
+     * Third rotation column, uniformly scaled.
+     */
+    instance->transform[8] = rotation[6] * scale;
+    instance->transform[9] = rotation[7] * scale;
+    instance->transform[10] = rotation[8] * scale;
+
+    /*
+     * Translation column.
+     */
+    instance->transform[12] = position[0];
+    instance->transform[13] = position[1];
+    instance->transform[14] = position[2];
+    instance->transform[15] = 1.0f;
+
+    instance->color[0] = color[0];
+    instance->color[1] = color[1];
+    instance->color[2] = color[2];
+    instance->color[3] = color[3];
+
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_mesh_get_builtin(
     const RaijinContext* ctx, RaijinBuiltinMesh builtin, RaijinMesh* out
 ) {
     // As long as `out` is valid, it will be cleared
@@ -475,18 +745,37 @@ RaijinResult raijin_context_get_builtin_mesh(
 
     if (!ctx) return RAIJIN_ERROR_INVALID_ARGUMENT;
 
+    MeshHandle internal_mesh;
     switch (builtin) {
         case RAIJIN_BUILTIN_MESH_CUBE:
-            *out = raijin_mesh_from_internal(
-                ctx, ctx->engine.renderer.builtin.cube
-            );
-            return RAIJIN_SUCCESS;
+            internal_mesh = ctx->engine.renderer.builtin.cube;
+            break;
+        case RAIJIN_BUILTIN_MESH_PLANE:
+            internal_mesh = ctx->engine.renderer.builtin.plane;
+            break;
+        case RAIJIN_BUILTIN_MESH_DISC:
+            internal_mesh = ctx->engine.renderer.builtin.disc;
+            break;
+        case RAIJIN_BUILTIN_MESH_CYLINDER:
+            internal_mesh = ctx->engine.renderer.builtin.cylinder;
+            break;
+        case RAIJIN_BUILTIN_MESH_CONE:
+            internal_mesh = ctx->engine.renderer.builtin.cone;
+            break;
+        case RAIJIN_BUILTIN_MESH_SPHERE_UV:
+            internal_mesh = ctx->engine.renderer.builtin.sphere_uv;
+            break;
         default:
             return RAIJIN_ERROR_INVALID_ARGUMENT;
     }
+    *out = raijin_mesh_from_internal(ctx, internal_mesh);
+    if (*out == RAIJIN_MESH_INVALID) {
+        return RAIJIN_ERROR_INVALID_STATE;
+    }
+    return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_create_mesh(
+RaijinResult raijin_mesh_create(
     RaijinContext* ctx, const RaijinMeshDesc* desc, RaijinMesh* out_mesh
 ) {
     if (out_mesh == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
@@ -527,7 +816,7 @@ RaijinResult raijin_context_create_mesh(
     return RAIJIN_SUCCESS;
 }
 
-RaijinResult raijin_context_submit_instances(
+RaijinResult raijin_submit_instances(
     RaijinContext* ctx,
     RaijinMesh mesh,
     const RaijinInstance* instances,

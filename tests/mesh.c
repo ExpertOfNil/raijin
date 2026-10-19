@@ -12,7 +12,9 @@
         }                        \
     } while (0)
 
-static bool indices_are_valid(const IndexArray* indices, uint32_t vertex_count) {
+static bool indices_are_valid(
+    const IndexArray* indices, uint32_t vertex_count
+) {
     for (uint32_t i = 0; i < indices->count; ++i) {
         if (indices->items[i] >= vertex_count) {
             return false;
@@ -130,7 +132,9 @@ static int test_invalid_divisions(void) {
 
     CHECK(MeshGeometry_create_cylinder(&geometry, 0) == RETURN_FAILURE);
     CHECK(MeshGeometry_create_cylinder(&geometry, 3) == RETURN_FAILURE);
-    CHECK(MeshGeometry_create_cylinder(&geometry, UINT32_MAX) == RETURN_FAILURE);
+    CHECK(
+        MeshGeometry_create_cylinder(&geometry, UINT32_MAX) == RETURN_FAILURE
+    );
 
     CHECK(MeshGeometry_create_cone(&geometry, 0) == RETURN_FAILURE);
     CHECK(MeshGeometry_create_cone(&geometry, 3) == RETURN_FAILURE);

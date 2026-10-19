@@ -60,7 +60,7 @@ int main(void) {
     uint8_t* pixel_buf = NULL;
 
     // Create context
-    RaijinResult result = raijin_context_create(&desc, &ctx);
+    RaijinResult result = raijin_create(&desc, &ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -72,15 +72,12 @@ int main(void) {
     }
 
     // Create cube instance
-    RaijinInstance cube;
-    raijin_instance_init(&cube);
+    float position[3] = {0.0f, 0.0f, 0.0f};
+    float rotation[9] = {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+    float scale = 1.0f;
+    float color[4] = {0.0f, 1.0f, 0.0f, 1.0f};
 
-    cube.color[0] = 0.0f;
-    cube.color[1] = 1.0f;
-    cube.color[2] = 0.0f;
-    cube.color[3] = 1.0f;
-
-    result = raijin_context_draw_cube(ctx, &cube);
+    result = raijin_draw_cube(ctx, position, rotation, scale, color);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr, "--> ERROR: Failed to draw cube: %u\n", (uint32_t)result
@@ -89,7 +86,7 @@ int main(void) {
         goto cleanup;
     }
 
-    result = raijin_context_render(ctx);
+    result = raijin_render(ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr, "--> ERROR: Failed to render frame: %u\n", (uint32_t)result
@@ -100,7 +97,7 @@ int main(void) {
 
     // Read frame to buffer
     uint64_t pixel_capacity = 0;
-    result = raijin_context_readback_size(ctx, &pixel_capacity);
+    result = raijin_readback_size(ctx, &pixel_capacity);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -127,7 +124,7 @@ int main(void) {
         goto cleanup;
     }
 
-    result = raijin_context_read_rgba8(ctx, pixel_buf, pixel_capacity);
+    result = raijin_read_rgba8(ctx, pixel_buf, pixel_capacity);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -148,6 +145,6 @@ int main(void) {
 
 cleanup:
     if (pixel_buf) free(pixel_buf);
-    raijin_context_destroy(ctx);
+    raijin_destroy(ctx);
     return exit_status;
 }

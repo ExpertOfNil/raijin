@@ -1,5 +1,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_video.h>
 #include <limits.h>
 
 #include "logging.h"
@@ -53,9 +54,20 @@ bool RaijinWindow_init(
         return false;
     }
 
+    int pixel_width = 0;
+    int pixel_height = 0;
+
+    if (!SDL_GetWindowSizeInPixels(handle, &pixel_width, &pixel_height) ||
+        pixel_width <= 0 || pixel_height <= 0) {
+        log_error("SDL_GetWindowSizeInPixels: %s\n", SDL_GetError());
+        SDL_DestroyWindow(handle);
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        return false;
+    }
+
     window->handle = handle;
-    window->width = width;
-    window->height = height;
+    window->width = (uint32_t)pixel_width;
+    window->height = (uint32_t)pixel_height;
     window->minimized = false;
     window->should_close = false;
     return true;
@@ -76,7 +88,7 @@ bool RaijinWindow_poll_event(
             case SDL_EVENT_QUIT:
                 translated.type = RAIJIN_WINDOW_EVENT_QUIT;
                 break;
-            case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 translated.type = RAIJIN_WINDOW_EVENT_RESIZED;
                 translated.data.resized.width = event.window.data1;
                 translated.data.resized.height = event.window.data2;
@@ -239,6 +251,34 @@ WGPUSurface RaijinWindow_create_surface(
 #else
 #error "Raijin SDL backend currently supports Linux only"
 #endif
+}
+
+bool RaijinWindow_get_pixel_size(
+    const RaijinWindow* window, uint32_t* out_width, uint32_t* out_height
+) {
+    if (out_width != NULL) *out_width = 0;
+    if (out_height != NULL) *out_height = 0;
+
+    if (window == NULL || window->handle == NULL || out_width == NULL ||
+        out_height == NULL) {
+        return false;
+    }
+
+    int pixel_width = 0;
+    int pixel_height = 0;
+    if (!SDL_GetWindowSizeInPixels(
+            (SDL_Window*)window->handle, &pixel_width, &pixel_height
+        )) {
+        log_error("SDL_GetWindowSizeInPixels: %s\n", SDL_GetError());
+        return false;
+    }
+
+    if (pixel_width <= 0 || pixel_height <= 0) return false;
+
+    *out_width = (uint32_t)pixel_width;
+    *out_height = (uint32_t)pixel_height;
+
+    return true;
 }
 
 void RaijinWindow_destroy(RaijinWindow* window) {

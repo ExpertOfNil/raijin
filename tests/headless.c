@@ -18,7 +18,7 @@ int main(void) {
     uint8_t* pixel_buf = NULL;
 
     // Create context
-    RaijinResult result = raijin_context_create(&desc, &ctx);
+    RaijinResult result = raijin_create(&desc, &ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -30,7 +30,7 @@ int main(void) {
     }
 
     float clear_color[4];
-    result = raijin_context_get_clear_color(ctx, clear_color);
+    result = raijin_get_clear_color(ctx, clear_color);
     if (result != RAIJIN_SUCCESS) {
         fprintf(stderr, "--> ERROR: Failed to get clear color\n");
         exit_status = EXIT_FAILURE;
@@ -46,13 +46,13 @@ int main(void) {
     clear_color[1] = 1.0f;
     clear_color[2] = 1.0f;
     clear_color[3] = 1.0f;
-    result = raijin_context_set_clear_color(ctx, clear_color);
+    result = raijin_set_clear_color(ctx, clear_color);
     if (result != RAIJIN_SUCCESS) {
         fprintf(stderr, "--> ERROR: Failed to set clear color\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
-    result = raijin_context_get_clear_color(ctx, clear_color);
+    result = raijin_get_clear_color(ctx, clear_color);
     if (result != RAIJIN_SUCCESS) {
         fprintf(stderr, "--> ERROR: failed to get clear color\n");
         exit_status = EXIT_FAILURE;
@@ -76,35 +76,35 @@ int main(void) {
     // Verify public edge-visibility controls
     uint32_t edges_visible = UINT32_MAX;
 
-    result = raijin_context_get_edge_visibility(ctx, &edges_visible);
+    result = raijin_get_edge_visibility(ctx, &edges_visible);
     if (result != RAIJIN_SUCCESS || edges_visible != 0) {
         fprintf(stderr, "--> ERROR: Invalid initial edge visibility\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
 
-    result = raijin_context_set_edge_visibility(ctx, 2);
+    result = raijin_set_edge_visibility(ctx, 2);
     if (result != RAIJIN_SUCCESS) {
         fprintf(stderr, "--> ERROR: Failed to enable edge visibility\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
 
-    result = raijin_context_get_edge_visibility(ctx, &edges_visible);
+    result = raijin_get_edge_visibility(ctx, &edges_visible);
     if (result != RAIJIN_SUCCESS || edges_visible != 1) {
         fprintf(stderr, "--> ERROR: Edge visibility was not enabled\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
 
-    result = raijin_context_set_edge_visibility(ctx, 0);
+    result = raijin_set_edge_visibility(ctx, 0);
     if (result != RAIJIN_SUCCESS) {
         fprintf(stderr, "--> ERROR: Failed to disable edge visibility\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
 
-    result = raijin_context_get_edge_visibility(ctx, &edges_visible);
+    result = raijin_get_edge_visibility(ctx, &edges_visible);
     if (result != RAIJIN_SUCCESS || edges_visible != 0) {
         fprintf(stderr, "--> ERROR: Edge visibility was not disabled\n");
         exit_status = EXIT_FAILURE;
@@ -112,7 +112,7 @@ int main(void) {
     }
 
     // Verify empty frame rendering and command clearing
-    result = raijin_context_render(ctx);
+    result = raijin_render(ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -125,9 +125,7 @@ int main(void) {
 
     // Create cube mesh
     RaijinMesh cube_mesh = RAIJIN_MESH_INVALID;
-    result = raijin_context_get_builtin_mesh(
-        ctx, RAIJIN_BUILTIN_MESH_CUBE, &cube_mesh
-    );
+    result = raijin_mesh_get_builtin(ctx, RAIJIN_BUILTIN_MESH_CUBE, &cube_mesh);
     if (result != RAIJIN_SUCCESS || cube_mesh == RAIJIN_MESH_INVALID) {
         fprintf(
             stderr,
@@ -140,7 +138,7 @@ int main(void) {
 
     // Test invalid builtin arguments
     RaijinMesh invalid_output = UINT64_MAX;
-    result = raijin_context_get_builtin_mesh(ctx, UINT32_MAX, &invalid_output);
+    result = raijin_mesh_get_builtin(ctx, UINT32_MAX, &invalid_output);
     if (result != RAIJIN_ERROR_INVALID_ARGUMENT ||
         invalid_output != RAIJIN_MESH_INVALID) {
         fprintf(
@@ -153,7 +151,7 @@ int main(void) {
     }
 
     // Test invalid submission arguments
-    result = raijin_context_submit_instances(ctx, RAIJIN_MESH_INVALID, NULL, 0);
+    result = raijin_submit_instances(ctx, RAIJIN_MESH_INVALID, NULL, 0);
     if (result != RAIJIN_ERROR_INVALID_HANDLE) {
         fprintf(
             stderr,
@@ -164,7 +162,7 @@ int main(void) {
         goto cleanup;
     }
 
-    result = raijin_context_submit_instances(ctx, cube_mesh, NULL, 1);
+    result = raijin_submit_instances(ctx, cube_mesh, NULL, 1);
     if (result != RAIJIN_ERROR_INVALID_ARGUMENT) {
         fprintf(
             stderr,
@@ -175,7 +173,7 @@ int main(void) {
         goto cleanup;
     }
 
-    result = raijin_context_submit_instances(ctx, cube_mesh, NULL, 0);
+    result = raijin_submit_instances(ctx, cube_mesh, NULL, 0);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -192,15 +190,14 @@ int main(void) {
      * Public mesh handles must be rejected by contexts other than their
      * original owner.
      */
-    result = raijin_context_create(&desc, &other_ctx);
+    result = raijin_create(&desc, &other_ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(stderr, "--> ERROR: Failed to create second context\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
 
-    result =
-        raijin_context_submit_instances(other_ctx, cube_mesh, &instance, 1);
+    result = raijin_submit_instances(other_ctx, cube_mesh, &instance, 1);
     if (result != RAIJIN_ERROR_INVALID_HANDLE) {
         fprintf(stderr, "--> ERROR: Cross-context mesh was accepted\n");
         exit_status = EXIT_FAILURE;
@@ -212,7 +209,7 @@ int main(void) {
      * created context.
      */
     RaijinMesh stale_mesh = RAIJIN_MESH_INVALID;
-    result = raijin_context_get_builtin_mesh(
+    result = raijin_mesh_get_builtin(
         other_ctx, RAIJIN_BUILTIN_MESH_CUBE, &stale_mesh
     );
     if (result != RAIJIN_SUCCESS) {
@@ -221,29 +218,28 @@ int main(void) {
         goto cleanup;
     }
 
-    raijin_context_destroy(other_ctx);
+    raijin_destroy(other_ctx);
     other_ctx = NULL;
 
-    result = raijin_context_create(&desc, &other_ctx);
+    result = raijin_create(&desc, &other_ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(stderr, "--> ERROR: Failed to create replacement context\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
 
-    result =
-        raijin_context_submit_instances(other_ctx, stale_mesh, &instance, 1);
+    result = raijin_submit_instances(other_ctx, stale_mesh, &instance, 1);
     if (result != RAIJIN_ERROR_INVALID_HANDLE) {
         fprintf(stderr, "--> ERROR: Stale mesh handle was accepted\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }
 
-    raijin_context_destroy(other_ctx);
+    raijin_destroy(other_ctx);
     other_ctx = NULL;
 
     /* Invalid arguments test */
-    result = raijin_context_submit_instances(ctx, UINT64_MAX, &instance, 1);
+    result = raijin_submit_instances(ctx, UINT64_MAX, &instance, 1);
     if (result != RAIJIN_ERROR_INVALID_HANDLE) {
         fprintf(
             stderr,
@@ -255,14 +251,12 @@ int main(void) {
     }
 
     // Create cube instance
-    RaijinInstance cube;
-    raijin_instance_init(&cube);
+    float position[3] = {0.0f, 0.0f, 0.0f};
+    float rotation[9] = {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+    float scale = 1.0f;
+    float color[4] = {0.0f, 1.0f, 0.0f, 1.0f};
 
-    cube.color[0] = 0.0f;
-    cube.color[1] = 1.0f;
-    cube.color[2] = 0.0f;
-
-    result = raijin_context_draw_cube(ctx, &cube);
+    result = raijin_draw_cube(ctx, position, rotation, scale, color);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr, "--> ERROR: Failed to draw cube: %u\n", (uint32_t)result
@@ -286,7 +280,7 @@ int main(void) {
     cubes[1].color[1] = 1.0f;
     cubes[1].color[2] = 0.0f;
 
-    result = raijin_context_submit_instances(ctx, cube_mesh, cubes, 2);
+    result = raijin_submit_instances(ctx, cube_mesh, cubes, 2);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -304,7 +298,7 @@ int main(void) {
         raijin_instance_init(&growth_instances[i]);
     }
 
-    result = raijin_context_submit_instances(
+    result = raijin_submit_instances(
         ctx, cube_mesh, growth_instances, GROWTH_INSTANCE_COUNT
     );
 
@@ -318,7 +312,7 @@ int main(void) {
         goto cleanup;
     }
 
-    result = raijin_context_render(ctx);
+    result = raijin_render(ctx);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr, "--> ERROR: Failed to render frame: %u\n", (uint32_t)result
@@ -329,7 +323,7 @@ int main(void) {
 
     // Read frame to buffer
     uint64_t pixel_capacity = 0;
-    result = raijin_context_readback_size(ctx, &pixel_capacity);
+    result = raijin_readback_size(ctx, &pixel_capacity);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -353,7 +347,7 @@ int main(void) {
         goto cleanup;
     }
 
-    result = raijin_context_read_rgba8(ctx, pixel_buf, pixel_capacity);
+    result = raijin_read_rgba8(ctx, pixel_buf, pixel_capacity);
     if (result != RAIJIN_SUCCESS) {
         fprintf(
             stderr,
@@ -381,7 +375,7 @@ int main(void) {
     }
 
     // Expected error
-    result = raijin_context_read_rgba8(ctx, pixel_buf, pixel_capacity - 1);
+    result = raijin_read_rgba8(ctx, pixel_buf, pixel_capacity - 1);
     uint32_t expected_result = RAIJIN_ERROR_BUFFER_TOO_SMALL;
     if (result != expected_result) {
         fprintf(
@@ -396,7 +390,7 @@ int main(void) {
 
 cleanup:
     if (pixel_buf) free(pixel_buf);
-    raijin_context_destroy(ctx);
-    raijin_context_destroy(other_ctx);
+    raijin_destroy(ctx);
+    raijin_destroy(other_ctx);
     return exit_status;
 }

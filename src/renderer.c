@@ -6,6 +6,7 @@
 #include "core.h"
 #include "logging.h"
 #include "mesh.h"
+#include "webgpu.h"
 
 extern const unsigned char raijin_solid_shader_wgsl[];
 extern const size_t raijin_solid_shader_wgsl_size;
@@ -514,8 +515,9 @@ static ReturnStatus Renderer_render_pass_edges(
     // Render all meshes
     for (uint32_t i = 0; i < renderer->active_meshes.count; ++i) {
         MeshHandle mesh_handle = renderer->active_meshes.items[i];
-        if (Renderer_render_mesh_edges(renderer, mesh_handle, render_pass_encoder) !=
-            RETURN_SUCCESS) {
+        if (Renderer_render_mesh_edges(
+                renderer, mesh_handle, render_pass_encoder
+            ) != RETURN_SUCCESS) {
             log_error("Failed to render mesh edges %d\n", i);
             wgpuRenderPassEncoderEnd(render_pass_encoder);
             wgpuRenderPassEncoderRelease(render_pass_encoder);
@@ -1578,8 +1580,13 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                     status = RETURN_DEVICE_LOST;
                     break;
                 case WGPUSurfaceGetCurrentTextureStatus_Outdated:
-                    log_error("Surface is outdated\n");
-                    status = RETURN_FAILURE;
+                    log_debug(
+                        "Surface became outdated at %u x %u. "
+                        "Reconfiguring...\n",
+                        renderer->render_target.windowed.surface_config.width,
+                        renderer->render_target.windowed.surface_config.height
+                    );
+                    status = RETURN_SURFACE_OUTDATED;
                     break;
                 case WGPUSurfaceGetCurrentTextureStatus_Lost:
                     log_error("Surface was lost\n");
@@ -1651,28 +1658,35 @@ ReturnStatus Renderer_handle_resize(
     Renderer* renderer, uint32_t width, uint32_t height
 ) {
     // Avoid zero-size textures (minimized window)
-    if (width == 0 || height == 0) {
-        log_error("Invalid render size: width=%d, height=%d\n", width, height);
+    if (renderer == NULL || renderer->render_mode != RENDER_MODE_WINDOWED ||
+        renderer->render_target.windowed.surface == NULL || width == 0 ||
+        height == 0) {
         return RETURN_FAILURE;
     }
 
-    // Recreate depth texture
-    if (Renderer_create_depth_texture(
-            renderer,
-            width,
-            height,
-            "Depth Texture",
-            WGPUTextureFormat_Depth24Plus
-        ) != RETURN_SUCCESS) {
-        return RETURN_FAILURE;
+    WGPUSurfaceConfiguration* config =
+        &renderer->render_target.windowed.surface_config;
+    bool size_changed = config->width != width || config->height != height;
+    if (size_changed) {
+        if (Renderer_create_depth_texture(
+                renderer,
+                width,
+                height,
+                "Depth Texture",
+                WGPUTextureFormat_Depth24Plus
+            )) {
+            return RETURN_FAILURE;
+        }
+
+        config->width = width;
+        config->height = height;
     }
 
-    renderer->render_target.windowed.surface_config.width = width;
-    renderer->render_target.windowed.surface_config.height = height;
-    wgpuSurfaceConfigure(
-        renderer->render_target.windowed.surface,
-        &renderer->render_target.windowed.surface_config
-    );
+    /*
+     * Configure even when dimensions are unchanged. An outdated surface may
+     * require reconfiguration for reasons other than a size difference.
+     */
+    wgpuSurfaceConfigure(renderer->render_target.windowed.surface, config);
 
     log_debug(
         "Surface configured successfully: width=%d, height=%d\n", width, height

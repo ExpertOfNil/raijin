@@ -31,6 +31,7 @@ typedef enum {
     RETURN_FAILURE,
     RETURN_TIMEOUT,
     RETURN_DEVICE_LOST,
+    RETURN_SURFACE_OUTDATED,
 } ReturnStatus;
 
 typedef struct MouseState {
