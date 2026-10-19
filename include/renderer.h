@@ -135,7 +135,8 @@ ReturnStatus Renderer_submit_instances(
     u32 instance_count
 );
 void Renderer_clear_submissions(Renderer* renderer);
-ReturnStatus Renderer_replace_surface(
+void Renderer_release_surface(Renderer* renderer);
+ReturnStatus Renderer_adopt_surface(
     Renderer* renderer, WGPUSurface new_surface, uint32_t width, uint32_t height
 );
 ReturnStatus Renderer_reconfigure_surface(

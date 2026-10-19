@@ -1096,9 +1096,7 @@ static ReturnStatus Renderer_configure_surface(
 
     WGPUSurfaceConfiguration* config =
         &renderer->render_target.windowed.surface_config;
-
     bool size_changed = config->width != width || config->height != height;
-
     if (size_changed && Renderer_create_depth_texture(
                             renderer,
                             width,
@@ -1606,6 +1604,11 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                 (WGPUStringView){"Windowed Texture View", WGPU_STRLEN};
             texture_view_desc.format =
                 renderer->render_target.windowed.surface_config.format;
+            if (renderer->render_target.windowed.surface == NULL) {
+                log_error("Windowed renderer has no surface\n");
+                status = RETURN_FAILURE;
+                break;
+            }
             WGPUSurfaceTexture surface_texture = {0};
             wgpuSurfaceGetCurrentTexture(
                 renderer->render_target.windowed.surface, &surface_texture
@@ -1726,6 +1729,9 @@ ReturnStatus Renderer_render(Renderer* renderer) {
 ReturnStatus Renderer_handle_resize(
     Renderer* renderer, uint32_t width, uint32_t height
 ) {
+    if (renderer == NULL || renderer->render_mode != RENDER_MODE_WINDOWED) {
+        return RETURN_FAILURE;
+    }
     return Renderer_configure_surface(
         renderer, width, height, RENDERER_SURFACE_RECOVERY_IDLE
     );
@@ -1739,13 +1745,27 @@ ReturnStatus Renderer_reconfigure_surface(
     );
 }
 
-ReturnStatus Renderer_replace_surface(
+void Renderer_release_surface(Renderer* renderer) {
+    if (renderer == NULL || renderer->render_mode != RENDER_MODE_WINDOWED) {
+        return;
+    }
+
+    WGPUSurface surface = renderer->render_target.windowed.surface;
+    if (surface == NULL) return;
+    wgpuSurfaceUnconfigure(surface);
+    wgpuSurfaceRelease(surface);
+    renderer->render_target.windowed.surface = NULL;
+
+    log_debug("Window surface released\n");
+}
+
+ReturnStatus Renderer_adopt_surface(
     Renderer* renderer, WGPUSurface new_surface, uint32_t width, uint32_t height
 ) {
     if (new_surface == NULL) return RETURN_FAILURE;
     if (renderer == NULL || renderer->render_mode != RENDER_MODE_WINDOWED ||
         renderer->adapter == NULL || renderer->device == NULL ||
-        renderer->render_target.windowed.surface == NULL || width == 0 ||
+        renderer->render_target.windowed.surface != NULL || width == 0 ||
         height == 0) {
         wgpuSurfaceRelease(new_surface);
         return RETURN_FAILURE;
@@ -1807,13 +1827,6 @@ ReturnStatus Renderer_replace_surface(
         return RETURN_FAILURE;
     }
 
-    WGPUSurface old_surface = renderer->render_target.windowed.surface;
-
-    /*
-     * Do not configure two surfaces for the same native window
-     * simultaneously.
-     */
-    wgpuSurfaceUnconfigure(old_surface);
     wgpuSurfaceConfigure(new_surface, &new_config);
 
     renderer->render_target.windowed.surface = new_surface;
@@ -1821,9 +1834,7 @@ ReturnStatus Renderer_replace_surface(
     renderer->render_target.windowed.recovery_state =
         RENDERER_SURFACE_RECOVERY_REPLACED;
 
-    wgpuSurfaceRelease(old_surface);
-
-    log_debug("Replaced window surface at %u x %u\n", width, height);
+    log_debug("Adopted replacement surface at %u x %u\n", width, height);
     return RETURN_SUCCESS;
 }
 
@@ -2189,13 +2200,7 @@ void Renderer_destroy(Renderer* renderer) {
     }
     switch (renderer->render_mode) {
         case RENDER_MODE_WINDOWED: {
-            if (renderer->render_target.windowed.surface != NULL) {
-                wgpuSurfaceUnconfigure(
-                    renderer->render_target.windowed.surface
-                );
-                wgpuSurfaceRelease(renderer->render_target.windowed.surface);
-                log_debug("Window surface released.\n");
-            }
+            Renderer_release_surface(renderer);
         } break;
         case RENDER_MODE_HEADLESS: {
             if (renderer->render_target.headless.texture != NULL) {

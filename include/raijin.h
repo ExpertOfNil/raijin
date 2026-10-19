@@ -581,6 +581,7 @@ ReturnStatus Raijin_render(Raijin* engine) {
             goto finish;
         }
 
+        Renderer_release_surface(&engine->renderer);
         WGPUSurface new_surface = RaijinWindow_create_surface(
             &engine->window, engine->renderer.instance
         );
@@ -588,8 +589,7 @@ ReturnStatus Raijin_render(Raijin* engine) {
             status = RETURN_FAILURE;
             goto finish;
         }
-
-        status = Renderer_replace_surface(
+        status = Renderer_adopt_surface(
             &engine->renderer, new_surface, pixel_width, pixel_height
         );
         if (status != RETURN_SUCCESS) goto finish;
