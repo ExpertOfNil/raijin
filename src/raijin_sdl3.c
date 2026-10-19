@@ -88,6 +88,13 @@ bool RaijinWindow_poll_event(
             case SDL_EVENT_QUIT:
                 translated.type = RAIJIN_WINDOW_EVENT_QUIT;
                 break;
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                if (event.window.windowID !=
+                    SDL_GetWindowID((SDL_Window*)window->handle)) {
+                    continue;
+                }
+                translated.type = RAIJIN_WINDOW_EVENT_QUIT;
+                break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 translated.type = RAIJIN_WINDOW_EVENT_RESIZED;
                 translated.data.resized.width = event.window.data1;
