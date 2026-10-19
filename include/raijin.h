@@ -1,14 +1,10 @@
 #ifndef RAIJIN_H
 #define RAIJIN_H
 
-#include "cglm/cam.h"
-#ifndef CGLM_FORCE_DEPTH_ZERO_TO_ONE
-#define CGLM_FORCE_DEPTH_ZERO_TO_ONE
-#endif
-
 #include <stdbool.h>
 
 #include "camera.h"
+#include "cglm/cam.h"
 #include "cglm/mat4.h"
 #include "cimpl_core.h"
 #include "core.h"
@@ -33,7 +29,7 @@ typedef struct Raijin {
 ReturnStatus Raijin_init(
     Raijin*, const char* title, uint32_t width, uint32_t height, RenderMode mode
 );
-void Raijin_handle_events(Raijin* engine);
+ReturnStatus Raijin_handle_events(Raijin* engine);
 MeshHandle Raijin_register_mesh(
     Raijin* engine, const MeshGeometryView* geometry
 );
@@ -210,8 +206,9 @@ ReturnStatus Raijin_init(
     return RETURN_SUCCESS;
 }
 
-void Raijin_handle_events(Raijin* engine) {
-    if (engine == NULL) return;
+ReturnStatus Raijin_handle_events(Raijin* engine) {
+    if (engine == NULL) return RETURN_FAILURE;
+    ReturnStatus status = RETURN_SUCCESS;
 
     RaijinWindowEvent event;
     bool camera_changed = false;
@@ -294,18 +291,19 @@ void Raijin_handle_events(Raijin* engine) {
 
     if (resize_pending && (pending_width != engine->window.width ||
                            pending_height != engine->window.height)) {
-        if (Renderer_handle_resize(
-                &engine->renderer, pending_width, pending_height
-            ) != RETURN_SUCCESS) {
+        ReturnStatus resize_status = Renderer_handle_resize(
+            &engine->renderer, pending_width, pending_height
+        );
+        if (resize_status != RETURN_SUCCESS) {
             log_error(
                 "Failed to resize renderer to %u x %u\n",
                 pending_width,
                 pending_height
             );
+            status = resize_status;
         } else {
             engine->window.width = pending_width;
             engine->window.height = pending_height;
-            engine->window.minimized = false;
 
             engine->camera.aspect =
                 (float)pending_width / (float)pending_height;
@@ -323,6 +321,8 @@ void Raijin_handle_events(Raijin* engine) {
             engine->camera.view_matrix
         );
     }
+
+    return status;
 }
 
 void Raijin_destroy(Raijin* engine) {
@@ -523,40 +523,95 @@ ReturnStatus Raijin_render(Raijin* engine) {
 
     ReturnStatus status = Renderer_render(&engine->renderer);
 
-    if (status != RETURN_SURFACE_OUTDATED) return status;
+    if (status == RETURN_SURFACE_RECONFIGURE) {
+        uint32_t pixel_width = 0;
+        uint32_t pixel_height = 0;
 
-    uint32_t pixel_width = 0;
-    uint32_t pixel_height = 0;
+        if (!RaijinWindow_get_pixel_size(
+                &engine->window, &pixel_width, &pixel_height
+            )) {
+            status = RETURN_FAILURE;
+            goto finish;
+        }
+        if (pixel_width == 0 || pixel_height == 0) {
+            /*
+             * The drawable is temporarily unavailable. Do not overwrite the
+             * last configured extent or infer minimized state; a restore event
+             * may already have been processed.
+             */
+            status = RETURN_SUCCESS;
+            goto finish;
+        }
 
-    if (!RaijinWindow_get_pixel_size(
-            &engine->window, &pixel_width, &pixel_height
-        )) {
-        return RETURN_FAILURE;
+        status = Renderer_reconfigure_surface(
+            &engine->renderer, pixel_width, pixel_height
+        );
+        if (status != RETURN_SUCCESS) goto finish;
+
+        engine->window.width = pixel_width;
+        engine->window.height = pixel_height;
+
+        engine->camera.aspect = (float)pixel_width / (float)pixel_height;
+        glm_perspective_resize(
+            engine->camera.aspect, engine->camera.proj_matrix
+        );
+        Renderer_update_uniforms(
+            &engine->renderer,
+            engine->camera.proj_matrix,
+            engine->camera.view_matrix
+        );
+        /*
+         * Surface reconfiguration may not take effect until a later event-loop
+         * iteration. Consume this transient frame and try again on the next
+         * application frame rather than spinning or reporting a fatal error.
+         */
+        status = RETURN_SUCCESS;
+    } else if (status == RETURN_SURFACE_LOST) {
+        uint32_t pixel_width = 0;
+        uint32_t pixel_height = 0;
+
+        if (!RaijinWindow_get_pixel_size(
+                &engine->window, &pixel_width, &pixel_height
+            )) {
+            status = RETURN_FAILURE;
+            goto finish;
+        }
+        if (pixel_width == 0 || pixel_height == 0) {
+            status = RETURN_SUCCESS;
+            goto finish;
+        }
+
+        WGPUSurface new_surface = RaijinWindow_create_surface(
+            &engine->window, engine->renderer.instance
+        );
+        if (new_surface == NULL) {
+            status = RETURN_FAILURE;
+            goto finish;
+        }
+
+        status = Renderer_replace_surface(
+            &engine->renderer, new_surface, pixel_width, pixel_height
+        );
+        if (status != RETURN_SUCCESS) goto finish;
+
+        engine->window.width = pixel_width;
+        engine->window.height = pixel_height;
+        engine->camera.aspect = (float)pixel_width / (float)pixel_height;
+        glm_perspective_resize(
+            engine->camera.aspect, engine->camera.proj_matrix
+        );
+        Renderer_update_uniforms(
+            &engine->renderer,
+            engine->camera.proj_matrix,
+            engine->camera.view_matrix
+        );
+
+        status = RETURN_SUCCESS;
     }
 
-    log_debug(
-        "Recovering outdated surface at actual pixel size %u x %u\n",
-        pixel_width,
-        pixel_height
-    );
-
-    if (Renderer_handle_resize(&engine->renderer, pixel_width, pixel_height) !=
-        RETURN_SUCCESS) {
-        return RETURN_FAILURE;
-    }
-
-    engine->window.width = pixel_width;
-    engine->window.height = pixel_height;
-    engine->window.minimized = false;
-
-    engine->camera.aspect = (float)pixel_width / (float)pixel_height;
-    glm_perspective_resize(engine->camera.aspect, engine->camera.proj_matrix);
-    Renderer_update_uniforms(
-        &engine->renderer,
-        engine->camera.proj_matrix,
-        engine->camera.view_matrix
-    );
-    return RETURN_SUCCESS;
+finish:
+    Renderer_clear_submissions(&engine->renderer);
+    return status;
 }
 
 void Raijin_draw_mesh_instance(

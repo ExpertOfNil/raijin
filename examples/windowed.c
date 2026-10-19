@@ -219,7 +219,7 @@ int main(void) {
     (void) tri;
     (void) frustum;
     while (!engine.window.should_close) {
-        Raijin_handle_events(&engine);
+        if (Raijin_handle_events(&engine) != RETURN_SUCCESS) break;
         // Raijin_draw_mesh_instance(&engine, tri, tri_instance);
         // Raijin_draw_disc_instance(&engine, disc_instance);
         Raijin_draw_assembly_instance(&engine, axis_assy, global_axis);

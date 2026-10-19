@@ -36,7 +36,9 @@ WGPUSurface RaijinWindow_create_surface(
     return NULL;
 }
 
-bool RaijinWindow_get_pixel_size(const RaijinWindow *window, uint32_t *out_width, uint32_t *out_height) {
+bool RaijinWindow_get_pixel_size(
+    const RaijinWindow* window, uint32_t* out_width, uint32_t* out_height
+) {
     (void)window;
 
     if (out_width != NULL) *out_width = 0;

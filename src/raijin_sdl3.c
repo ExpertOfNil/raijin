@@ -273,7 +273,14 @@ bool RaijinWindow_get_pixel_size(
         return false;
     }
 
-    if (pixel_width <= 0 || pixel_height <= 0) return false;
+    if (pixel_width < 0 || pixel_height < 0) {
+        log_error(
+            "SDL returned invalid pixel size %d x %d\n",
+            pixel_width,
+            pixel_height
+        );
+        return false;
+    }
 
     *out_width = (uint32_t)pixel_width;
     *out_height = (uint32_t)pixel_height;

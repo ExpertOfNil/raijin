@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "camera.h"
+#include "cglm/cam.h"
 #include "mesh.h"
 #include "raijin/raijin.h"
 #include "renderer.h"
@@ -189,12 +190,12 @@ RaijinResult raijin_poll_events(RaijinContext* ctx) {
         return RAIJIN_ERROR_INVALID_STATE;
     }
 
-    Raijin_handle_events(&ctx->engine);
+    ReturnStatus status = Raijin_handle_events(&ctx->engine);
 
     ctx->width = ctx->engine.window.width;
     ctx->height = ctx->engine.window.height;
 
-    return RAIJIN_SUCCESS;
+    return raijin_result_from_status(status, RAIJIN_ERROR_RENDER);
 }
 
 RaijinResult raijin_get_viewport_size(
@@ -306,10 +307,20 @@ RaijinResult raijin_camera_set_projection_matrix(
         if (!isfinite(proj_matrix[i])) return RAIJIN_ERROR_INVALID_ARGUMENT;
     }
 
+    if (proj_matrix[0] == 0.0f || proj_matrix[5] == 0.0f) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
     memcpy(
         ctx->engine.camera.proj_matrix,
         proj_matrix,
         sizeof(ctx->engine.camera.proj_matrix)
+    );
+
+    // Adapt projection for the current window
+    ctx->engine.camera.aspect = (float)ctx->width / (float)ctx->height;
+    glm_perspective_resize(
+        ctx->engine.camera.aspect, ctx->engine.camera.proj_matrix
     );
 
     Renderer_update_uniforms(

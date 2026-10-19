@@ -103,6 +103,13 @@ RaijinResult raijin_camera_look_at(
 RaijinResult raijin_camera_set_view_matrix(
     RaijinContext* ctx, const float view_matrix[16]
 );
+/*
+ * Sets a column-major, aspect-adjustable projection matrix.
+ *
+ * Raijin preserves the matrix's vertical projection scale and updates its
+ * horizontal scale for the current viewport aspect ratio immediately and
+ * whenever the viewport is resized.
+ */
 RaijinResult raijin_camera_set_projection_matrix(
     RaijinContext* ctx, const float proj_matrix[16]
 );

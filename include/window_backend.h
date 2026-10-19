@@ -79,6 +79,10 @@ bool RaijinWindow_poll_event(
 WGPUSurface RaijinWindow_create_surface(
     RaijinWindow* window, WGPUInstance instance
 );
+/*
+ * Returns false only when the backend query fails. A successful query may
+ * report a zero extent when the drawable is temporarily unavailable.
+ */
 bool RaijinWindow_get_pixel_size(
     const RaijinWindow* window, uint32_t* out_width, uint32_t* out_height
 );

@@ -80,6 +80,12 @@ static ReturnStatus Renderer_request_adapter(
 static ReturnStatus Renderer_request_device(Renderer* renderer);
 static void Renderer_cancel_buffer_map(Renderer* renderer);
 static void Renderer_retire_buffer_map(Renderer* renderer);
+static ReturnStatus Renderer_configure_surface(
+    Renderer* renderer,
+    uint32_t width,
+    uint32_t height,
+    RendererSurfaceRecoveryState next_state
+);
 static void buffer_map_callback(
     WGPUMapAsyncStatus status,
     WGPUStringView message,
@@ -1076,6 +1082,44 @@ static void Renderer_retire_buffer_map(Renderer* renderer) {
     *ctx = (WgpuBufferMapContext){.status = WGPUMapAsyncStatus_Unknown};
 }
 
+static ReturnStatus Renderer_configure_surface(
+    Renderer* renderer,
+    uint32_t width,
+    uint32_t height,
+    RendererSurfaceRecoveryState next_state
+) {
+    if (renderer == NULL || renderer->render_mode != RENDER_MODE_WINDOWED ||
+        renderer->render_target.windowed.surface == NULL || width == 0 ||
+        height == 0) {
+        return RETURN_FAILURE;
+    }
+
+    WGPUSurfaceConfiguration* config =
+        &renderer->render_target.windowed.surface_config;
+
+    bool size_changed = config->width != width || config->height != height;
+
+    if (size_changed && Renderer_create_depth_texture(
+                            renderer,
+                            width,
+                            height,
+                            "Depth Texture",
+                            WGPUTextureFormat_Depth24Plus
+                        ) != RETURN_SUCCESS) {
+        return RETURN_FAILURE;
+    }
+
+    config->width = width;
+    config->height = height;
+
+    wgpuSurfaceConfigure(renderer->render_target.windowed.surface, config);
+    renderer->render_target.windowed.recovery_state = next_state;
+    log_debug(
+        "Surface configured successfully: width=%u, height=%u\n", width, height
+    );
+    return RETURN_SUCCESS;
+}
+
 /* Public Functions */
 MeshHandle Renderer_register_mesh(
     Renderer* renderer, const MeshGeometryView* geometry
@@ -1198,6 +1242,8 @@ ReturnStatus Renderer_init_windowed(
         renderer->render_target.windowed.surface,
         &renderer->render_target.windowed.surface_config
     );
+    renderer->render_target.windowed.recovery_state =
+        RENDERER_SURFACE_RECOVERY_IDLE;
     log_debug(
         "Configured surface size: [%d, %d]\n",
         renderer->render_target.windowed.surface_config.width,
@@ -1567,9 +1613,9 @@ ReturnStatus Renderer_render(Renderer* renderer) {
 
             switch (surface_texture.status) {
                 case WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal:
-                    break;
                 case WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal:
-                    log_warn("Sub-optimal WGPU surface texture status\n");
+                    renderer->render_target.windowed.recovery_state =
+                        RENDERER_SURFACE_RECOVERY_IDLE;
                     break;
                 case WGPUSurfaceGetCurrentTextureStatus_Timeout:
                     log_warn("Timed out acquiring surface texture\n");
@@ -1580,17 +1626,41 @@ ReturnStatus Renderer_render(Renderer* renderer) {
                     status = RETURN_DEVICE_LOST;
                     break;
                 case WGPUSurfaceGetCurrentTextureStatus_Outdated:
-                    log_debug(
-                        "Surface became outdated at %u x %u. "
-                        "Reconfiguring...\n",
-                        renderer->render_target.windowed.surface_config.width,
-                        renderer->render_target.windowed.surface_config.height
-                    );
-                    status = RETURN_SURFACE_OUTDATED;
+                    switch (renderer->render_target.windowed.recovery_state) {
+                        case RENDERER_SURFACE_RECOVERY_IDLE:
+                            log_debug(
+                                "Surface became outdated.  Requesting "
+                                "reconfiguration\n"
+                            );
+                            status = RETURN_SURFACE_RECONFIGURE;
+                            break;
+                        case RENDERER_SURFACE_RECOVERY_RECONFIGURED:
+                            log_warn(
+                                "Surface remained outdated after "
+                                "reconfiguration.  Requesting replacement\n"
+                            );
+                            status = RETURN_SURFACE_LOST;
+                            break;
+                        case RENDERER_SURFACE_RECOVERY_REPLACED:
+                        default:
+                            log_error(
+                                "Replacement surface remained outdated\n"
+                            );
+                            status = RETURN_FAILURE;
+                            break;
+                    }
                     break;
                 case WGPUSurfaceGetCurrentTextureStatus_Lost:
-                    log_error("Surface was lost\n");
-                    status = RETURN_FAILURE;
+                    if (renderer->render_target.windowed.recovery_state ==
+                        RENDERER_SURFACE_RECOVERY_REPLACED) {
+                        log_error("Replacement surface was also lost\n");
+                        status = RETURN_FAILURE;
+                    } else {
+                        log_warn(
+                            "Window surface was lost.  Requesting replacement\n"
+                        );
+                        status = RETURN_SURFACE_LOST;
+                    }
                     break;
                 case WGPUSurfaceGetCurrentTextureStatus_OutOfMemory:
                     log_error("Out of memory acquiring surface texture\n");
@@ -1650,47 +1720,110 @@ ReturnStatus Renderer_render(Renderer* renderer) {
             status = RETURN_FAILURE;
         } break;
     }
-    Renderer_clear_submissions(renderer);
     return status;
 }
 
 ReturnStatus Renderer_handle_resize(
     Renderer* renderer, uint32_t width, uint32_t height
 ) {
-    // Avoid zero-size textures (minimized window)
+    return Renderer_configure_surface(
+        renderer, width, height, RENDERER_SURFACE_RECOVERY_IDLE
+    );
+}
+
+ReturnStatus Renderer_reconfigure_surface(
+    Renderer* renderer, uint32_t width, uint32_t height
+) {
+    return Renderer_configure_surface(
+        renderer, width, height, RENDERER_SURFACE_RECOVERY_RECONFIGURED
+    );
+}
+
+ReturnStatus Renderer_replace_surface(
+    Renderer* renderer, WGPUSurface new_surface, uint32_t width, uint32_t height
+) {
+    if (new_surface == NULL) return RETURN_FAILURE;
     if (renderer == NULL || renderer->render_mode != RENDER_MODE_WINDOWED ||
+        renderer->adapter == NULL || renderer->device == NULL ||
         renderer->render_target.windowed.surface == NULL || width == 0 ||
         height == 0) {
+        wgpuSurfaceRelease(new_surface);
         return RETURN_FAILURE;
     }
 
-    WGPUSurfaceConfiguration* config =
-        &renderer->render_target.windowed.surface_config;
-    bool size_changed = config->width != width || config->height != height;
-    if (size_changed) {
-        if (Renderer_create_depth_texture(
-                renderer,
-                width,
-                height,
-                "Depth Texture",
-                WGPUTextureFormat_Depth24Plus
-            )) {
-            return RETURN_FAILURE;
-        }
+    WGPUSurfaceCapabilities capabilities = {0};
+    WGPUStatus capability_status = wgpuSurfaceGetCapabilities(
+        new_surface, renderer->adapter, &capabilities
+    );
 
-        config->width = width;
-        config->height = height;
+    if (capability_status != WGPUStatus_Success) {
+        log_error("Failed to query replacement surface capabilities\n");
+        wgpuSurfaceCapabilitiesFreeMembers(capabilities);
+        wgpuSurfaceRelease(new_surface);
+        return RETURN_FAILURE;
     }
 
-    /*
-     * Configure even when dimensions are unchanged. An outdated surface may
-     * require reconfiguration for reasons other than a size difference.
-     */
-    wgpuSurfaceConfigure(renderer->render_target.windowed.surface, config);
+    WGPUTextureFormat current_format =
+        renderer->render_target.windowed.surface_config.format;
+    bool format_supported = false;
 
-    log_debug(
-        "Surface configured successfully: width=%d, height=%d\n", width, height
-    );
+    for (size_t i = 0; i < capabilities.formatCount; ++i) {
+        if (capabilities.formats[i] == current_format) {
+            format_supported = true;
+            break;
+        }
+    }
+
+    bool usage_supported =
+        (capabilities.usages & WGPUTextureUsage_RenderAttachment) != 0;
+    wgpuSurfaceCapabilitiesFreeMembers(capabilities);
+    if (!format_supported || !usage_supported) {
+        log_error(
+            "Replacement surface does not support the current configuration\n"
+        );
+        wgpuSurfaceRelease(new_surface);
+        return RETURN_FAILURE;
+    }
+
+    WGPUSurfaceConfiguration new_config =
+        renderer->render_target.windowed.surface_config;
+    new_config.width = width;
+    new_config.height = height;
+
+    bool size_changed =
+        new_config.width !=
+            renderer->render_target.windowed.surface_config.width ||
+        new_config.height !=
+            renderer->render_target.windowed.surface_config.height;
+
+    if (size_changed && Renderer_create_depth_texture(
+                            renderer,
+                            width,
+                            height,
+                            "Depth Texture",
+                            WGPUTextureFormat_Depth24Plus
+                        ) != RETURN_SUCCESS) {
+        wgpuSurfaceRelease(new_surface);
+        return RETURN_FAILURE;
+    }
+
+    WGPUSurface old_surface = renderer->render_target.windowed.surface;
+
+    /*
+     * Do not configure two surfaces for the same native window
+     * simultaneously.
+     */
+    wgpuSurfaceUnconfigure(old_surface);
+    wgpuSurfaceConfigure(new_surface, &new_config);
+
+    renderer->render_target.windowed.surface = new_surface;
+    renderer->render_target.windowed.surface_config = new_config;
+    renderer->render_target.windowed.recovery_state =
+        RENDERER_SURFACE_RECOVERY_REPLACED;
+
+    wgpuSurfaceRelease(old_surface);
+
+    log_debug("Replaced window surface at %u x %u\n", width, height);
     return RETURN_SUCCESS;
 }
 

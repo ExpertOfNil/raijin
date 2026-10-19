@@ -29,6 +29,12 @@ typedef enum {
     RENDER_MODE_WINDOWED,
 } RenderMode;
 
+typedef enum {
+    RENDERER_SURFACE_RECOVERY_IDLE,
+    RENDERER_SURFACE_RECOVERY_RECONFIGURED,
+    RENDERER_SURFACE_RECOVERY_REPLACED,
+} RendererSurfaceRecoveryState;
+
 typedef struct WgpuAdapterRequestContext {
     bool completed;
     WGPURequestAdapterStatus status;
@@ -69,6 +75,7 @@ typedef struct Renderer {
         struct {
             WGPUSurface surface;
             WGPUSurfaceConfiguration surface_config;
+            RendererSurfaceRecoveryState recovery_state;
         } windowed;
     } render_target;
     WGPURenderPipeline solid_pipeline;
@@ -128,6 +135,12 @@ ReturnStatus Renderer_submit_instances(
     u32 instance_count
 );
 void Renderer_clear_submissions(Renderer* renderer);
+ReturnStatus Renderer_replace_surface(
+    Renderer* renderer, WGPUSurface new_surface, uint32_t width, uint32_t height
+);
+ReturnStatus Renderer_reconfigure_surface(
+    Renderer* renderer, uint32_t width, uint32_t height
+);
 void Renderer_destroy(Renderer* renderer);
 
 #endif /* RENDERER_H */
