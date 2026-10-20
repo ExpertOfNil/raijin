@@ -101,6 +101,39 @@ static int raijin_mesh_to_internal(
     return 0;
 }
 
+static RaijinAssembly raijin_assembly_from_internal(
+    const RaijinContext* ctx, AssemblyHandle assembly
+) {
+    if (ctx == NULL || ctx->id == 0 || assembly == INVALID_ASSEMBLY_HANDLE) {
+        return RAIJIN_ASSEMBLY_INVALID;
+    }
+
+    uint64_t encoded_index = (uint64_t)assembly + UINT64_C(1);
+    return ((uint64_t)ctx->id << 32) | encoded_index;
+}
+
+static int raijin_assembly_to_internal(
+    const RaijinContext* ctx, RaijinAssembly assembly, AssemblyHandle* out
+) {
+    if (ctx == NULL || out == NULL || assembly == RAIJIN_ASSEMBLY_INVALID) {
+        return -1;
+    }
+
+    uint32_t context_id = (uint32_t)(assembly >> 32);
+    uint32_t encoded_index = (uint32_t)assembly;
+    if (context_id == 0 || context_id != ctx->id || encoded_index == 0) {
+        return -1;
+    }
+
+    uint32_t index = encoded_index - UINT32_C(1);
+    if (index >= ctx->engine.assemblies.count) {
+        return -1;
+    }
+
+    *out = (AssemblyHandle)index;
+    return 0;
+}
+
 static RaijinResult raijin_result_from_status(
     ReturnStatus status, RaijinResult fallback
 ) {
@@ -651,6 +684,150 @@ RaijinResult raijin_draw_line(
     }
 
     return raijin_submit_instances(ctx, cylinder, &instance, 1);
+}
+
+RaijinResult raijin_assembly_create(
+    RaijinContext* ctx, RaijinAssembly* out_assembly
+) {
+    if (out_assembly == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+    *out_assembly = RAIJIN_ASSEMBLY_INVALID;
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    AssemblyArray* assemblies = &ctx->engine.assemblies;
+    if (assemblies->count == UINT32_MAX) return RAIJIN_ERROR_OUT_OF_MEMORY;
+
+    AssemblyHandle internal_handle = assemblies->count;
+
+    Assembly assembly = {0};
+    AssemblyComponentArray_init(&assembly.components);
+    if (AssemblyArray_push(assemblies, assembly) != RETURN_OK) {
+        return RAIJIN_ERROR_OUT_OF_MEMORY;
+    }
+    *out_assembly = raijin_assembly_from_internal(ctx, internal_handle);
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_assembly_add_mesh(
+    RaijinContext* ctx,
+    RaijinAssembly assembly,
+    RaijinMesh mesh,
+    const RaijinInstance* local_instance
+) {
+    if (ctx == NULL || local_instance == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    AssemblyHandle internal_assembly;
+    if (raijin_assembly_to_internal(ctx, assembly, &internal_assembly) != 0) {
+        return RAIJIN_ERROR_INVALID_HANDLE;
+    }
+
+    MeshHandle internal_mesh;
+    if (raijin_mesh_to_internal(ctx, mesh, &internal_mesh) != 0) {
+        return RAIJIN_ERROR_INVALID_HANDLE;
+    }
+
+    AssemblyComponent component = {
+        .mesh_handle = internal_mesh,
+        .instance = {0},
+    };
+
+    memcpy(
+        component.instance.model_matrix,
+        local_instance->transform,
+        sizeof(component.instance.model_matrix)
+    );
+    memcpy(
+        component.instance.color,
+        local_instance->color,
+        sizeof(component.instance.color)
+    );
+
+    Assembly* internal = &ctx->engine.assemblies.items[internal_assembly];
+
+    if (AssemblyComponentArray_push(&internal->components, component) !=
+        RETURN_OK) {
+        return RAIJIN_ERROR_OUT_OF_MEMORY;
+    }
+
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_draw_assembly(
+    RaijinContext* ctx,
+    RaijinAssembly assembly,
+    const float* position,
+    const float* rotation,
+    float scale,
+    const float* color
+) {
+    if (ctx == NULL) return RAIJIN_ERROR_INVALID_ARGUMENT;
+
+    AssemblyHandle internal_assembly;
+    if (raijin_assembly_to_internal(ctx, assembly, &internal_assembly) != 0) {
+        return RAIJIN_ERROR_INVALID_HANDLE;
+    }
+
+    RaijinInstance parent;
+    RaijinResult result =
+        raijin_instance_init_trs(&parent, position, rotation, scale, color);
+    if (result != RAIJIN_SUCCESS) return result;
+
+    Instance internal_parent = {0};
+    memcpy(
+        internal_parent.model_matrix,
+        parent.transform,
+        sizeof(internal_parent.model_matrix)
+    );
+    memcpy(internal_parent.color, parent.color, sizeof(internal_parent.color));
+
+    Renderer* renderer = &ctx->engine.renderer;
+    const Assembly* internal = &ctx->engine.assemblies.items[internal_assembly];
+
+    /*
+     * Public insertion already validates these references. Check them
+     * before submitting anything because internal helpers also populate
+     * the engine's assembly storage.
+     */
+    for (uint32_t i = 0; i < internal->components.count; ++i) {
+        if (internal->components.items[i].mesh_handle >=
+            renderer->meshes.count) {
+            return RAIJIN_ERROR_INVALID_HANDLE;
+        }
+    }
+
+    uint32_t original_active_count = renderer->active_meshes.count;
+    for (uint32_t i = 0; i < internal->components.count; ++i) {
+        AssemblyComponent* component = &internal->components.items[i];
+
+        Instance instance = {0};
+        glm_mat4_mul(
+            internal_parent.model_matrix,
+            component->instance.model_matrix,
+            instance.model_matrix
+        );
+        glm_vec4_mul(
+            internal_parent.color, component->instance.color, instance.color
+        );
+
+        if (Renderer_submit_instances(
+                renderer, component->mesh_handle, &instance, 1
+            ) != RETURN_SUCCESS) {
+            /*
+             * Components [0, i) each appended exactly one instance.
+             * Repeated mesh references are deliberately decremented
+             * once per successful component.
+             */
+            for (uint32_t j = 0; j < i; ++j) {
+                MeshHandle mesh = internal->components.items[j].mesh_handle;
+                --renderer->meshes.items[mesh].submitted_instances.count;
+            }
+
+            renderer->active_meshes.count = original_active_count;
+            return RAIJIN_ERROR_OUT_OF_MEMORY;
+        }
+    }
+    return RAIJIN_SUCCESS;
 }
 
 void raijin_destroy(RaijinContext* ctx) {

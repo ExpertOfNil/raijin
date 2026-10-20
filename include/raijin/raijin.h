@@ -39,6 +39,9 @@ typedef uint32_t RaijinBuiltinMesh;
 #define RAIJIN_BUILTIN_MESH_CONE ((RaijinBuiltinMesh)5u)
 #define RAIJIN_BUILTIN_MESH_SPHERE_UV ((RaijinBuiltinMesh)6u)
 
+typedef uint64_t RaijinAssembly;
+#define RAIJIN_ASSEMBLY_INVALID ((RaijinAssembly)0u)
+
 typedef struct RaijinContextDesc {
     const char* title;
     uint32_t width;
@@ -192,6 +195,26 @@ RaijinResult raijin_draw_line(
     float radius,
     const float color[4]
 );
+/*
+ * Expands an assembly into transient mesh submissions.
+ *
+ * rotation is a column-major 3x3 matrix.
+ * Component transforms are multiplied on the left by the parent TRS.
+ * Component RGBA colors are multiplied by the parent color.
+ *
+ * Failure leaves previously queued submissions unchanged and queues
+ * none of this assembly's components. Internal capacity may grow.
+ *
+ * Submit again before each render attempt in which the assembly is visible.
+ */
+RaijinResult raijin_draw_assembly(
+    RaijinContext* ctx,
+    RaijinAssembly assembly,
+    const float position[3],
+    const float rotation[9],
+    float scale,
+    const float color[4]
+);
 RaijinResult raijin_mesh_get_builtin(
     const RaijinContext* ctx, RaijinBuiltinMesh builtin, RaijinMesh* mesh
 );
@@ -203,6 +226,27 @@ RaijinResult raijin_submit_instances(
     RaijinMesh mesh,
     const RaijinInstance* instances,
     uint32_t instance_count
+);
+/*
+ * Creates an empty assembly owned by ctx.
+ * On failure, *out_assembly is RAIJIN_ASSEMBLY_INVALID.
+ *
+ * Assemblies remain valid until context destruction.
+ */
+RaijinResult raijin_assembly_create(
+    RaijinContext* ctx, RaijinAssembly* out_assembly
+);
+/*
+ * Copies a mesh reference and its local instance into the assembly.
+ * Both handles must belong to ctx. The assembly does not own the mesh.
+ *
+ * Failure leaves the assembly's logical contents unchanged.
+ */
+RaijinResult raijin_assembly_add_mesh(
+    RaijinContext* ctx,
+    RaijinAssembly assembly,
+    RaijinMesh mesh,
+    const RaijinInstance* local_instance
 );
 void raijin_destroy(RaijinContext* ctx);
 
