@@ -13,6 +13,7 @@
 #include "renderer.h"
 #include "webgpu.h"
 #include "window_backend.h"
+#include "raijin/raijin.h"
 
 /* Types */
 
@@ -22,6 +23,8 @@ typedef struct Raijin {
     PanOrbitCamera camera;
     MouseState mouse;
     AssemblyArray assemblies;
+    RaijinKeyCallback key_callback;
+    void* key_callback_user_data;
 } Raijin;
 
 /* Function prototypes */
@@ -144,6 +147,8 @@ ReturnStatus Raijin_init(
     engine->renderer.clear_color[1] = 0.03f;
     engine->renderer.clear_color[2] = 0.03f;
     engine->renderer.clear_color[3] = 1.0f;
+    engine->key_callback = NULL;
+    engine->key_callback_user_data = NULL;
 
     uint32_t render_width = width;
     uint32_t render_height = height;
@@ -206,6 +211,22 @@ ReturnStatus Raijin_init(
     return RETURN_SUCCESS;
 }
 
+static inline RaijinKey Raijin_key_from_window_key(RaijinWindowKey key) {
+    switch (key) {
+        case RAIJIN_WINDOW_KEY_ESCAPE:
+            return RAIJIN_KEY_ESC;
+        case RAIJIN_WINDOW_KEY_TAB:
+            return RAIJIN_KEY_TAB;
+        case RAIJIN_WINDOW_KEY_S:
+            return RAIJIN_KEY_S;
+        case RAIJIN_WINDOW_KEY_L:
+            return RAIJIN_KEY_L;
+        case RAIJIN_WINDOW_KEY_UNKNOWN:
+        default:
+            return RAIJIN_KEY_UNKNOWN;
+    }
+}
+
 ReturnStatus Raijin_handle_events(Raijin* engine) {
     if (engine == NULL) return RETURN_FAILURE;
     ReturnStatus status = RETURN_SUCCESS;
@@ -237,12 +258,30 @@ ReturnStatus Raijin_handle_events(Raijin* engine) {
             case RAIJIN_WINDOW_EVENT_RESTORED:
                 engine->window.minimized = false;
                 break;
-            case RAIJIN_WINDOW_EVENT_KEY_DOWN: {
-                if (event.data.key.key == RAIJIN_WINDOW_KEY_ESCAPE) {
-                    engine->window.should_close = true;
+            case RAIJIN_WINDOW_EVENT_KEY_DOWN:
+            case RAIJIN_WINDOW_EVENT_KEY_UP: {
+                bool pressed = event.type == RAIJIN_WINDOW_EVENT_KEY_DOWN;
+
+                if (pressed) {
+                    if (event.data.key.key == RAIJIN_WINDOW_KEY_ESCAPE) {
+                        engine->window.should_close = true;
+                    }
+                    if (event.data.key.key == RAIJIN_WINDOW_KEY_TAB) {
+                        engine->renderer.enable_edges ^= true;
+                    }
                 }
-                if (event.data.key.key == RAIJIN_WINDOW_KEY_TAB) {
-                    engine->renderer.enable_edges ^= true;
+
+                if (engine->key_callback != NULL) {
+                    const RaijinKeyEvent notification = {
+                        .key = Raijin_key_from_window_key(event.data.key.key),
+                        .modifiers = event.data.key.modifiers,
+                        .pressed = pressed ? 1u : 0u,
+                        .repeat = pressed && event.data.key.repeat ? 1u : 0u,
+                    };
+
+                    engine->key_callback(
+                        &notification, engine->key_callback_user_data
+                    );
                 }
             } break;
             case RAIJIN_WINDOW_EVENT_MOUSE_WHEEL: {

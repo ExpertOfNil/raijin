@@ -8,7 +8,6 @@ extern "C" {
 #endif
 
 typedef uint32_t RaijinResult;
-
 #define RAIJIN_SUCCESS ((RaijinResult)0u)
 #define RAIJIN_ERROR_INVALID_ARGUMENT ((RaijinResult)1u)
 #define RAIJIN_ERROR_OUT_OF_MEMORY ((RaijinResult)2u)
@@ -21,6 +20,10 @@ typedef uint32_t RaijinResult;
 #define RAIJIN_ERROR_TIMEOUT ((RaijinResult)9u)
 #define RAIJIN_ERROR_DEVICE_LOST ((RaijinResult)10u)
 #define RAIJIN_ERROR_MESH_CREATION ((RaijinResult)11u)
+#define RAIJIN_ERROR_IO ((RaijinResult)12u)
+#define RAIJIN_ERROR_NOT_FOUND ((RaijinResult)13u)
+#define RAIJIN_ERROR_INVALID_FORMAT ((RaijinResult)14u)
+#define RAIJIN_ERROR_UNSUPPORTED_VERSION ((RaijinResult)15u)
 
 typedef struct RaijinContext RaijinContext;
 
@@ -41,6 +44,20 @@ typedef uint32_t RaijinBuiltinMesh;
 
 typedef uint64_t RaijinAssembly;
 #define RAIJIN_ASSEMBLY_INVALID ((RaijinAssembly)0u)
+
+typedef uint32_t RaijinKey;
+#define RAIJIN_KEY_UNKNOWN ((RaijinKey)0u)
+#define RAIJIN_KEY_ESC ((RaijinKey)1u)
+#define RAIJIN_KEY_TAB ((RaijinKey)2u)
+#define RAIJIN_KEY_S ((RaijinKey)3u)
+#define RAIJIN_KEY_L ((RaijinKey)4u)
+
+typedef uint32_t RaijinKeyModifiers;
+#define RAIJIN_KEY_MOD_NONE ((RaijinKeyModifiers)0u)
+#define RAIJIN_KEY_MOD_SHIFT ((RaijinKeyModifiers)1u)
+#define RAIJIN_KEY_MOD_CTRL ((RaijinKeyModifiers)(1u << 1))
+#define RAIJIN_KEY_MOD_ALT ((RaijinKeyModifiers)(1u << 2))
+#define RAIJIN_KEY_MOD_SUPER ((RaijinKeyModifiers)(1u << 3))
 
 typedef struct RaijinContextDesc {
     const char* title;
@@ -81,6 +98,58 @@ typedef struct RaijinMeshDesc {
     const uint32_t* edge_indices;
     uint32_t edge_index_count;
 } RaijinMeshDesc;
+
+/*
+ * Camera pose and projection, independent of GPU resources.
+ *
+ * All components must be finite.
+ */
+typedef struct RaijinCameraState {
+    /* World-space orbit pivot. */
+    float target[3];
+    /*
+     * Unit quaternion in x, y, z, w order.
+     * Identity orientation faces +Y with +Z as up.
+     * Applying state permits small normalization drift.
+     */
+    float orientation[4];
+    /* Positive distance from the eye to the orbit pivot. */
+    float distance;
+    /*
+     * Column-major, aspect-adjustable projection matrix.
+     * Has the same semantics as raijin_camera_set_projection_matrix().
+     */
+    float projection[16];
+} RaijinCameraState;
+
+/*
+ * Supported persistent viewer state.
+ *
+ * Currently contains only camera state, not complete scene contents.
+ * This in-memory representation is not an on-disk file format.
+ */
+typedef struct RaijinState {
+    RaijinCameraState camera;
+} RaijinState;
+
+typedef struct RaijinKeyEvent {
+    RaijinKey key;
+    RaijinKeyModifiers modifiers;
+    // 1 = down, 0 = up
+    uint32_t pressed;
+    // 1 = auto-repeat key-down, otherwise 0
+    uint32_t repeat;
+} RaijinKeyEvent;
+
+/*
+ * event is borrowed and valid only during this call.
+ *
+ * Do not call Raijin context operations from the callback, including
+ * polling, rendering, state application, callback registration, or
+ * destruction. Record application requests and handle them after
+ * raijin_poll_events() returns.
+ */
+typedef void (*RaijinKeyCallback)(const RaijinKeyEvent* event, void* user_data);
 
 RaijinResult raijin_create(const RaijinContextDesc* desc, RaijinContext** out);
 RaijinResult raijin_poll_events(RaijinContext* ctx);
@@ -248,7 +317,6 @@ RaijinResult raijin_assembly_add_mesh(
     RaijinMesh mesh,
     const RaijinInstance* local_instance
 );
-void raijin_destroy(RaijinContext* ctx);
 
 void raijin_instance_init(RaijinInstance* instance);
 RaijinResult raijin_instance_init_trs(
@@ -258,6 +326,79 @@ RaijinResult raijin_instance_init_trs(
     float scale,
     const float color[4]
 );
+
+/*
+ * Captures the supported persistent viewer state.
+ *
+ * The caller owns out_state. No pointers into ctx are retained.
+ * On failure, out_state is unchanged.
+ *
+ * Call on the same thread used for other context operations.
+ */
+RaijinResult raijin_get_state(const RaijinContext* ctx, RaijinState* out_state);
+
+/*
+ * Applies a previously captured or loaded state.
+ *
+ * The camera view is rebuilt from target, orientation, and distance.
+ * Projection horizontal scale is adjusted for the current viewport,
+ * matching raijin_camera_set_projection_matrix().
+ *
+ * Controller tuning, distance limits, and viewport size are unchanged.
+ * Distance must be positive and within the destination camera's limits.
+ * Invalid state is rejected without modifying ctx.
+ *
+ * Call on the same thread used for other context operations.
+ */
+RaijinResult raijin_set_state(RaijinContext* ctx, const RaijinState* state);
+
+/*
+ * Writes state using Raijin's versioned binary format.
+ *
+ * Does not access or modify a context.
+ * An existing file is overwritten.
+ * On failure, the destination file may be incomplete.
+ *
+ * Returns INVALID_ARGUMENT for a null state, null path, or empty path;
+ * IO for filesystem failures.
+ */
+RaijinResult raijin_state_save(const RaijinState* state, const char* path);
+
+/*
+ * Reads a complete state file without applying it to a context.
+ * On failure, out_state is unchanged.
+ *
+ * This function validates the file structure, not whether the decoded
+ * state can be applied to a particular context. Use raijin_set_state()
+ * to validate and apply it.
+ *
+ * Returns INVALID_ARGUMENT for a null path, empty path, or null output;
+ * NOT_FOUND if the file does not exist;
+ * INVALID_FORMAT for malformed or truncated data;
+ * UNSUPPORTED_VERSION for an unrecognized format version;
+ * IO for other filesystem failures.
+ */
+RaijinResult raijin_state_load(const char* path, RaijinState* out_state);
+
+/*
+ * Registers a keyboard notification callback for a windowed context.
+ * Passing NULL unregisters the callback; user_data is then ignored.
+ *
+ * Raijin borrows user_data and does not free it. The application must
+ * keep it valid while registered and during callback execution.
+ *
+ * The callback runs synchronously during raijin_poll_events(), on
+ * the polling thread. It receives notifications, not control over
+ * Raijin's built-in input handling.
+ *
+ * Returns INVALID_ARGUMENT for a null context, or INVALID_STATE
+ * for a headless context.
+ */
+RaijinResult raijin_set_key_callback(
+    RaijinContext* ctx, RaijinKeyCallback callback, void* user_data
+);
+
+void raijin_destroy(RaijinContext* ctx);
 
 #ifdef __cplusplus
 }

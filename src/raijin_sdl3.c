@@ -1,9 +1,11 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_events.h>
+#include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_video.h>
 #include <limits.h>
 
 #include "logging.h"
+#include "raijin/raijin.h"
 #include "window_backend.h"
 
 #ifdef __linux__
@@ -17,6 +19,10 @@ static RaijinWindowKey translate_key(SDL_Keycode key) {
             return RAIJIN_WINDOW_KEY_ESCAPE;
         case SDLK_TAB:
             return RAIJIN_WINDOW_KEY_TAB;
+        case SDLK_S:
+            return RAIJIN_WINDOW_KEY_S;
+        case SDLK_L:
+            return RAIJIN_WINDOW_KEY_L;
         default:
             return RAIJIN_WINDOW_KEY_UNKNOWN;
     }
@@ -33,6 +39,25 @@ static RaijinWindowMouseButton translate_mouse_button(uint8_t button) {
         default:
             return RAIJIN_WINDOW_MOUSE_BUTTON_UNKNOWN;
     }
+}
+
+static RaijinKeyModifiers translate_modifiers(SDL_Keymod modifiers) {
+    RaijinKeyModifiers translated = RAIJIN_KEY_MOD_NONE;
+
+    if (modifiers & SDL_KMOD_SHIFT) {
+        translated |= RAIJIN_KEY_MOD_SHIFT;
+    }
+    if (modifiers & SDL_KMOD_CTRL) {
+        translated |= RAIJIN_KEY_MOD_CTRL;
+    }
+    if (modifiers & SDL_KMOD_ALT) {
+        translated |= RAIJIN_KEY_MOD_ALT;
+    }
+    if (modifiers & SDL_KMOD_GUI) {
+        translated |= RAIJIN_KEY_MOD_SUPER;
+    }
+
+    return translated;
 }
 
 bool RaijinWindow_init(
@@ -107,9 +132,21 @@ bool RaijinWindow_poll_event(
                 translated.type = RAIJIN_WINDOW_EVENT_RESTORED;
                 break;
             case SDL_EVENT_KEY_DOWN:
-                translated.type = RAIJIN_WINDOW_EVENT_KEY_DOWN;
+            case SDL_EVENT_KEY_UP: {
+                if (event.key.windowID !=
+                    SDL_GetWindowID((SDL_Window*)window->handle)) {
+                    continue;
+                }
+
+                bool pressed = event.type == SDL_EVENT_KEY_DOWN;
+
+                translated.type = pressed ? RAIJIN_WINDOW_EVENT_KEY_DOWN
+                                          : RAIJIN_WINDOW_EVENT_KEY_UP;
                 translated.data.key.key = translate_key(event.key.key);
-                break;
+                translated.data.key.modifiers =
+                    translate_modifiers(event.key.mod);
+                translated.data.key.repeat = pressed && event.key.repeat;
+            } break;
             case SDL_EVENT_MOUSE_WHEEL:
                 translated.type = RAIJIN_WINDOW_EVENT_MOUSE_WHEEL;
                 translated.data.wheel.delta = event.wheel.y;

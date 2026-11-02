@@ -1,9 +1,99 @@
 #include <inttypes.h>
+#include <math.h>
 #include <raijin/raijin.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+static bool floats_near(const float* lhs, const float* rhs, size_t count) {
+    const float eps = 1e-5f;
+    for (size_t i = 0; i < count; ++i) {
+        if (!isfinite(lhs[i]) || !isfinite(rhs[i])) {
+            return false;
+        }
+
+        float scale = fmaxf(1.0f, fmaxf(fabsf(lhs[i]), fabsf(rhs[i])));
+        if (fabsf(lhs[i] - rhs[i]) > eps * scale) return false;
+    }
+    return true;
+}
+
+static bool states_near(const RaijinState* lhs, const RaijinState* rhs) {
+    return floats_near(lhs->camera.target, rhs->camera.target, 3) &&
+           floats_near(lhs->camera.orientation, rhs->camera.orientation, 4) &&
+           floats_near(&lhs->camera.distance, &rhs->camera.distance, 1) &&
+           floats_near(lhs->camera.projection, rhs->camera.projection, 16);
+}
+
+static bool test_state(RaijinContext* ctx) {
+    RaijinState initial;
+    RaijinState saved;
+    RaijinState restored;
+
+    if (raijin_get_state(ctx, &initial) != RAIJIN_SUCCESS) return false;
+
+    /* Non-default pose, including a non-axis-aligned up vector. */
+    const float eye[3] = {3.0f, -4.0f, 2.0f};
+    const float direction[3] = {-0.3f, 0.8f, 0.4f};
+    const float up[3] = {0.1f, 0.2f, 1.0f};
+
+    if (raijin_camera_look_to(ctx, eye, direction, up, 7.0f) !=
+        RAIJIN_SUCCESS) {
+        return false;
+    }
+
+    if (raijin_get_state(ctx, &saved) != RAIJIN_SUCCESS) return false;
+
+    /* Change the camera, then restore the captured pose. */
+    if (raijin_set_state(ctx, &initial) != RAIJIN_SUCCESS) return false;
+    if (raijin_set_state(ctx, &saved) != RAIJIN_SUCCESS) return false;
+    if (raijin_get_state(ctx, &restored) != RAIJIN_SUCCESS) return false;
+    if (!states_near(&saved, &restored)) return false;
+
+    /*
+     * Each invalid state also changes the target, so a partial
+     * application cannot pass merely because that field was unchanged.
+     */
+    RaijinState invalid[3];
+    for (size_t i = 0; i < 3; ++i) {
+        invalid[i] = saved;
+        invalid[i].camera.target[0] += 10.0f;
+    }
+
+    invalid[0].camera.distance = 0.0f;
+    memset(
+        invalid[1].camera.orientation, 0, sizeof(invalid[1].camera.orientation)
+    );
+    invalid[2].camera.projection[10] = NAN;
+
+    for (size_t i = 0; i < 3; ++i) {
+        if (raijin_set_state(ctx, &invalid[i]) !=
+            RAIJIN_ERROR_INVALID_ARGUMENT) {
+            return false;
+        }
+
+        if (raijin_get_state(ctx, &restored) != RAIJIN_SUCCESS) {
+            return false;
+        }
+        if (!states_near(&saved, &restored)) return false;
+    }
+
+    if (raijin_get_state(NULL, &restored) != RAIJIN_ERROR_INVALID_ARGUMENT) {
+        return false;
+    }
+
+    if (!states_near(&saved, &restored)) return false;
+
+    if (raijin_get_state(ctx, NULL) != RAIJIN_ERROR_INVALID_ARGUMENT ||
+        raijin_set_state(NULL, &saved) != RAIJIN_ERROR_INVALID_ARGUMENT ||
+        raijin_set_state(ctx, NULL) != RAIJIN_ERROR_INVALID_ARGUMENT) {
+        return false;
+    }
+
+    /* Leave the context as it was for the remaining rendering tests. */
+    return raijin_set_state(ctx, &initial) == RAIJIN_SUCCESS;
+}
 
 int main(void) {
     RaijinContextDesc desc;
@@ -25,6 +115,12 @@ int main(void) {
             "--> ERROR: Failed to initialize Raijin context: %u\n",
             (uint32_t)result
         );
+        exit_status = EXIT_FAILURE;
+        goto cleanup;
+    }
+
+    if (!test_state(ctx)) {
+        fprintf(stderr, "--> ERROR: State capture/apply test failed\n");
         exit_status = EXIT_FAILURE;
         goto cleanup;
     }

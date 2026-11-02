@@ -81,6 +81,7 @@ add_library(raijin STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/src/mesh.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/core.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/camera.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/state.c"
     "${RAIJIN_EMBEDDED_SHADERS_C}"
 )
 add_library(Raijin::Raijin ALIAS raijin)
@@ -187,5 +188,19 @@ if(BUILD_TESTING)
     add_test(
         NAME raijin-camera
         COMMAND raijin-test-camera
+    )
+
+    add_executable(raijin-test-state
+        tests/state.c
+    )
+
+    target_link_libraries(raijin-test-state
+        PRIVATE
+        Raijin::Raijin
+    )
+
+    add_test(
+        NAME raijin-state
+        COMMAND raijin-test-state
     )
 endif()

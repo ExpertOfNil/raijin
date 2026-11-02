@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "raijin/raijin.h"
 #include "webgpu.h"
 
 typedef struct {
@@ -21,6 +22,7 @@ typedef enum {
     RAIJIN_WINDOW_EVENT_MINIMIZED,
     RAIJIN_WINDOW_EVENT_RESTORED,
     RAIJIN_WINDOW_EVENT_KEY_DOWN,
+    RAIJIN_WINDOW_EVENT_KEY_UP,
     RAIJIN_WINDOW_EVENT_MOUSE_WHEEL,
     RAIJIN_WINDOW_EVENT_MOUSE_BUTTON_DOWN,
     RAIJIN_WINDOW_EVENT_MOUSE_BUTTON_UP,
@@ -31,6 +33,8 @@ typedef enum {
     RAIJIN_WINDOW_KEY_UNKNOWN,
     RAIJIN_WINDOW_KEY_ESCAPE,
     RAIJIN_WINDOW_KEY_TAB,
+    RAIJIN_WINDOW_KEY_S,
+    RAIJIN_WINDOW_KEY_L,
 } RaijinWindowKey;
 
 typedef enum {
@@ -51,6 +55,8 @@ typedef struct {
 
         struct {
             RaijinWindowKey key;
+            RaijinKeyModifiers modifiers;
+            bool repeat;
         } key;
 
         struct {

@@ -9,6 +9,7 @@
 
 #include "camera.h"
 #include "cglm/cam.h"
+#include "cglm/quat.h"
 #include "mesh.h"
 #include "raijin/raijin.h"
 #include "renderer.h"
@@ -1066,5 +1067,158 @@ RaijinResult raijin_submit_instances(
         renderer->active_meshes.items[renderer->active_meshes.count++] =
             internal_mesh;
     }
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_get_state(
+    const RaijinContext* ctx, RaijinState* out_state
+) {
+    if (ctx == NULL || out_state == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    const PanOrbitCamera* camera = &ctx->engine.camera;
+    RaijinState snapshot = {0};
+
+    memcpy(
+        snapshot.camera.target, camera->target, sizeof(snapshot.camera.target)
+    );
+    memcpy(
+        snapshot.camera.orientation,
+        camera->orientation,
+        sizeof(snapshot.camera.orientation)
+    );
+    snapshot.camera.distance = camera->distance;
+    memcpy(
+        snapshot.camera.projection,
+        camera->proj_matrix,
+        sizeof(snapshot.camera.projection)
+    );
+
+    *out_state = snapshot;
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_set_state(RaijinContext* ctx, const RaijinState* state) {
+    if (ctx == NULL || state == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    const RaijinCameraState* source = &state->camera;
+    PanOrbitCamera candidate = ctx->engine.camera;
+
+    for (size_t i = 0; i < 3; ++i) {
+        if (!isfinite(source->target[i])) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
+
+    /*
+     * Accept small floating-point drift, but reject quaternions that
+     * are not approximately unit length. Accumulate in double to
+     * avoid overflow when inspecting arbitrary finite float inputs.
+     */
+    const double eps = 1e-4;
+    double norm_sq = 0.0;
+    for (size_t i = 0; i < 4; ++i) {
+        if (!isfinite(source->orientation[i])) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+
+        double component = source->orientation[i];
+        norm_sq += component * component;
+    }
+
+    if (fabs(norm_sq - 1.0) > eps) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!isfinite(source->distance) || source->distance <= 0.0f ||
+        source->distance < candidate.distance_min ||
+        source->distance > candidate.distance_max) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    for (size_t i = 0; i < 16; ++i) {
+        if (!isfinite(source->projection[i])) {
+            return RAIJIN_ERROR_INVALID_ARGUMENT;
+        }
+    }
+
+    if (source->projection[0] == 0.0f || source->projection[5] == 0.0f) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (ctx->width == 0 || ctx->height == 0) {
+        return RAIJIN_ERROR_INVALID_STATE;
+    }
+
+    memcpy(candidate.target, source->target, sizeof(candidate.target));
+    memcpy(
+        candidate.orientation,
+        source->orientation,
+        sizeof(candidate.orientation)
+    );
+    glm_quat_normalize(candidate.orientation);
+    candidate.distance = source->distance;
+
+    memcpy(
+        candidate.proj_matrix, source->projection, sizeof(candidate.proj_matrix)
+    );
+    candidate.aspect = (float)ctx->width / (float)ctx->height;
+    glm_perspective_resize(candidate.aspect, candidate.proj_matrix);
+
+    PanOrbitCamera_update(&candidate);
+
+    /*
+     * Finite inputs can still produce nonfinite results, for example
+     * through overflow during projection adjustment.
+     */
+    for (size_t col = 0; col < 4; ++col) {
+        for (size_t row = 0; row < 4; ++row) {
+            if (!isfinite(candidate.view_matrix[col][row]) ||
+                !isfinite(candidate.proj_matrix[col][row])) {
+                return RAIJIN_ERROR_INVALID_ARGUMENT;
+            }
+        }
+    }
+
+    /*
+     * At extreme target coordinates, adding the eye offset can lose
+     * all displacement through rounding. Reject a degenerate view.
+     */
+    float view_det = glm_mat4_det(candidate.view_matrix);
+    if (!isfinite(view_det) || fabsf(view_det) < 1e-5f) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (candidate.proj_matrix[0][0] == 0.0f ||
+        candidate.proj_matrix[1][1] == 0.0f) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    ctx->engine.camera = candidate;
+    Renderer_update_uniforms(
+        &ctx->engine.renderer,
+        ctx->engine.camera.proj_matrix,
+        ctx->engine.camera.view_matrix
+    );
+
+    return RAIJIN_SUCCESS;
+}
+
+RaijinResult raijin_set_key_callback(
+    RaijinContext* ctx, RaijinKeyCallback callback, void* user_data
+) {
+    if (ctx == NULL) {
+        return RAIJIN_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (ctx->render_mode != RAIJIN_RENDER_MODE_WINDOWED) {
+        return RAIJIN_ERROR_INVALID_STATE;
+    }
+
+    ctx->engine.key_callback = callback;
+    ctx->engine.key_callback_user_data = callback != NULL ? user_data : NULL;
     return RAIJIN_SUCCESS;
 }
