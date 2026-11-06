@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
-project(raijin LANGUAGES CXX C)
+project(raijin VERSION 0.2.0 LANGUAGES CXX C)
+
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX
+        "/usr/local/raijin-${PROJECT_VERSION}"
+        CACHE PATH "Raijin installation prefix"
+        FORCE
+    )
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,11 +18,13 @@ set(
 )
 
 include(CTest)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 find_package(Threads REQUIRED)
 
 # SDL3 windowing backend enabled by default
 option(RAIJIN_ENABLE_SDL3 "Enable the SDL3 window backend" ON)
-if (RAIJIN_ENABLE_SDL3)
+if(RAIJIN_ENABLE_SDL3)
     find_package(SDL3 REQUIRED CONFIG)
     set(
         RAIJIN_WINDOW_BACKEND_SOURCE
@@ -61,6 +71,9 @@ add_library(logging STATIC
     "${CMAKE_CURRENT_SOURCE_DIR}/lib/logging/logging.c"
 )
 add_library(Logging::Logging ALIAS logging)
+set_target_properties(logging PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
 target_include_directories(logging
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/logging/include"
@@ -74,7 +87,7 @@ target_link_libraries(logging
     Threads::Threads
 )
 
-add_library(raijin STATIC
+add_library(raijin SHARED
     "${CMAKE_CURRENT_SOURCE_DIR}/src/raijin.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/renderer.c"
     "${RAIJIN_WINDOW_BACKEND_SOURCE}"
@@ -86,12 +99,19 @@ add_library(raijin STATIC
 )
 add_library(Raijin::Raijin ALIAS raijin)
 
+set_target_properties(raijin PROPERTIES
+    EXPORT_NAME Raijin
+    VERSION "${PROJECT_VERSION}"
+    SOVERSION "${PROJECT_VERSION}"
+)
+
 target_compile_features(raijin PUBLIC c_std_11)
 target_compile_definitions(raijin PRIVATE CGLM_FORCE_DEPTH_ZERO_TO_ONE)
 
 target_include_directories(raijin
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
+        "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
     PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/cimpl/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/lib/cglm/include"
@@ -119,6 +139,8 @@ target_link_libraries(example-minimal
     PRIVATE
         Raijin::Raijin
 )
+
+# Testing
 
 if(BUILD_TESTING)
     add_executable(raijin-test-validation
@@ -204,3 +226,45 @@ if(BUILD_TESTING)
         COMMAND raijin-test-state
     )
 endif()
+
+# Install
+
+install (TARGETS raijin
+    EXPORT RaijinTargets
+    LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/raijin/raijin.h"
+    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/raijin"
+)
+
+set(RAIJIN_INSTALL_CMAKEDIR
+    "${CMAKE_INSTALL_LIBDIR}/cmake/Raijin"
+)
+
+install(EXPORT RaijinTargets
+    FILE RaijinTargets.cmake
+    NAMESPACE Raijin::
+    DESTINATION "${RAIJIN_INSTALL_CMAKEDIR}"
+)
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/RaijinConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/RaijinConfig.cmake"
+    INSTALL_DESTINATION "${RAIJIN_INSTALL_CMAKEDIR}"
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/RaijinConfigVersion.cmake"
+    VERSION "${PROJECT_VERSION}"
+    COMPATIBILITY ExactVersion
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/RaijinConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/RaijinConfigVersion.cmake"
+    DESTINATION "${RAIJIN_INSTALL_CMAKEDIR}"
+)
