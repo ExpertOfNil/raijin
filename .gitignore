@@ -1,6 +1,6 @@
 bin/
-/build
-/build-*
+build/
+build-*/
 nob
 nob.old
 AGENTS.md
@@ -11,6 +11,7 @@ AGENTS.md
 *.jpeg
 *.jpg
 *.gif
+*.state
 zig-out/
 .zig-cache/
 archive/

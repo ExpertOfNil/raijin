@@ -164,6 +164,7 @@ if(BUILD_TESTING)
     target_link_libraries(raijin-test-headless
         PRIVATE
             Raijin::Raijin
+            m
     )
 
     add_test(
@@ -205,6 +206,7 @@ if(BUILD_TESTING)
     target_link_libraries(raijin-test-camera
         PRIVATE
         Raijin::Raijin
+        m
     )
 
     add_test(
